@@ -1,4 +1,6 @@
-flask
+Flask
 requests
 beautifulsoup4
+lxml
 gunicorn
+python-dotenv
