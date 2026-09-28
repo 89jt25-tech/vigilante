@@ -4,6 +4,7 @@ import os
 import re
 import json
 import html
+import hmac
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -26,6 +27,7 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 TELEGRAM_BOT_USERNAME = os.environ.get("TELEGRAM_BOT_USERNAME", "VigilanteSistemaMaestroBot")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN")
 
 URL_PAGINA = "https://sistemamaestro.mineducacion.gov.co/SistemaMaestro/busquedaVacantes.xhtml"
 ZONA_COLOMBIA = ZoneInfo("America/Bogota")
@@ -980,7 +982,20 @@ def telegram_webhook():
 # ENDPOINTS
 # ============================================================
 
+def requiere_token(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not ADMIN_TOKEN:
+            return {"error": "Define la variable de entorno ADMIN_TOKEN para usar este endpoint."}, 503
+        recibido = request.headers.get("X-Admin-Token") or request.args.get("token") or ""
+        if not hmac.compare_digest(recibido, ADMIN_TOKEN):
+            return {"error": "No autorizado"}, 401
+        return f(*args, **kwargs)
+    return wrapper
+
+
 @app.route("/set-webhook")
+@requiere_token
 def set_webhook():
     url_publica = request.host_url.rstrip("/").replace("http://", "https://", 1) + "/telegram-webhook"
     datos = {"url": url_publica,
@@ -1005,6 +1020,7 @@ def check():
 
 
 @app.route("/check-force")
+@requiere_token
 def check_force():
     if not lanzar_vigilante_en_hilo(notificar_siempre=True):
         return {"resultado": "Ya hay una ejecución en curso."}, 409
@@ -1024,11 +1040,13 @@ def status():
 
 
 @app.route("/verjson")
+@requiere_token
 def verjson():
     return {"ruta": DB_PATH, "contenido": cargar_datos_anteriores()}
 
 
 @app.route("/departamentos")
+@requiere_token
 def obtener_departamentos():
     try:
         info = obtener_info_mapa()
@@ -1046,6 +1064,7 @@ def obtener_departamentos():
 
 
 @app.route("/agregar-departamento", methods=["POST"])
+@requiere_token
 def agregar_departamento():
     try:
         data = request.get_json(silent=True)
@@ -1082,6 +1101,7 @@ def agregar_departamento():
 
 
 @app.route("/limpiar-vencidas", methods=["POST"])
+@requiere_token
 def limpiar_vencidas():
     try:
         with lock_db:
@@ -1096,6 +1116,7 @@ def limpiar_vencidas():
 
 
 @app.route("/limpiar-json", methods=["POST"])
+@requiere_token
 def limpiar_json():
     try:
         with db() as c:
@@ -1107,6 +1128,7 @@ def limpiar_json():
 
 
 @app.route("/cargar-json", methods=["POST"])
+@requiere_token
 def cargar_json():
     try:
         data = json.loads(request.get_data(as_text=True) or "")
@@ -1148,9 +1170,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px;border:1px solid #dd
 <textarea id="txt" rows="6" placeholder="Lista de objetos con id y departamento"></textarea><br>
 <button onclick="cargar()">📤 Cargar</button></div>
 <script>
+const TOKEN = __TOKEN__;
 const res = m => document.getElementById('res').innerHTML = m;
 function api(path, opts){
-  return fetch(path, opts).then(r => r.json());
+  return fetch(path + (path.includes('?')?'&':'?') + 'token=' + encodeURIComponent(TOKEN), opts).then(r => r.json());
 }
 function run(p){ res('⏳ ...'); api(p).then(d => res(d.resultado || d.error)).catch(e => res('❌ ' + e)); }
 function post(p, q){ if(!confirm(q)) return; api(p,{method:'POST'}).then(d => {res(d.mensaje || d.error); cargarJSON();}); }
@@ -1194,7 +1217,11 @@ cargarJSON(); setInterval(cargarJSON, 30000);
 
 @app.route("/")
 def home():
-    return PANEL_HTML
+    # Sin token válido responde "OK": sirve como ping de salud sin exponer el panel.
+    recibido = request.args.get("token") or ""
+    if not ADMIN_TOKEN or not hmac.compare_digest(recibido, ADMIN_TOKEN):
+        return "OK", 200
+    return PANEL_HTML.replace("__TOKEN__", json.dumps(ADMIN_TOKEN))
 
 
 # ============================================================
