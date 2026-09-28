@@ -634,13 +634,13 @@ def parsear_fecha_cierre(cierre_texto):
         return None
 
 
-def es_plaza_publicada_hace_al_menos(plaza, minutos=2, ahora=None):
+def es_plaza_publicada_ventana(plaza, min_minutos=2, max_minutos=3, ahora=None):
     """
-    Devuelve True si la plaza lleva publicada al menos `minutos`.
+    Devuelve True si la plaza lleva publicada:
+        min_minutos  <=  (ahora - fecha_publicacion)  <  max_minutos
 
     La fecha de publicación se calcula como: fecha_cierre - 24 horas.
-    Si la fecha de cierre no se puede parsear, devuelve False
-    (no queremos mostrar 🆕 si no sabemos cuándo se publicó).
+    Si la fecha de cierre no se puede parsear, devuelve False.
     """
     if ahora is None:
         ahora = datetime.now(ZONA_COLOMBIA)
@@ -648,7 +648,8 @@ def es_plaza_publicada_hace_al_menos(plaza, minutos=2, ahora=None):
     if not fecha_cierre:
         return False
     fecha_publicacion = fecha_cierre - timedelta(hours=24)
-    return (ahora - fecha_publicacion) >= timedelta(minutes=minutos)
+    delta = ahora - fecha_publicacion
+    return timedelta(minutes=min_minutos) <= delta < timedelta(minutes=max_minutos)
 
 
 def limpiar_plazas_vencidas(plazas):
@@ -741,8 +742,6 @@ def ejecutar_vigilante(notificar_siempre=False, chat_id=None):
             return "Sin cambios notificables."
 
     except Exception as e:
-        # Si alguien pidió "Actualizar", avisamos por Telegram.
-        # Si es el hilo automático (chat_id is None), solo logueamos para no spamear.
         mensaje_error = f"⚠️ Error en vigilante: {str(e)[:200]}"
         if chat_id is not None:
             try:
@@ -778,8 +777,6 @@ def construir_resumen_completo(plazas_actuales, plazas_anteriores, total_mapa, c
     for p in plazas_actuales:
         deptos[p["departamento"]].append(p)
 
-    ids_nuevas = {n["id"] for n in cambios["nuevas"]}
-
     lineas.append("--- <b>TODAS LAS PLAZAS ACTIVAS</b> ---")
     lineas.append("")
     for depto in sorted(deptos.keys()):
@@ -789,14 +786,9 @@ def construir_resumen_completo(plazas_actuales, plazas_anteriores, total_mapa, c
             municipio_esc = html.escape(p["municipio"])
             zona_esc = html.escape(p["zona_tipo"])
 
-            # 🆕 se muestra solo si:
-            #   (a) la plaza es nueva respecto al scrape anterior, Y
-            #   (b) lleva publicada al menos 3 minutos
-            #       (fecha de publicación = fecha_cierre - 24 h)
-            es_nueva = (
-                p["id"] in ids_nuevas
-                and es_plaza_publicada_hace_al_menos(p, minutos=3, ahora=ahora)
-            )
+            # 🆕 en toda plaza que lleve entre 2 y 3 minutos publicada.
+            # (fecha_publicacion = fecha_cierre - 24 h)
+            es_nueva = es_plaza_publicada_ventana(p, min_minutos=2, max_minutos=3, ahora=ahora)
             label = " 🆕" if es_nueva else ""
             lineas.append(f"  • {area_esc} ({municipio_esc} - {zona_esc}){label} – {p['postulados']} postulados")
         lineas.append("")
@@ -1059,7 +1051,6 @@ def _procesar_seleccion_menu(chat_id, texto):
     if not re.fullmatch(r"\d+", texto_limpio):
         return False
 
-    # Actualiza timestamp de actividad
     with lock_estados_menu:
         if chat_id in estados_menu_chat:
             estados_menu_chat[chat_id]["ultima_actividad"] = time.time()
@@ -1382,7 +1373,6 @@ def home():
                     .then(data => {
                         const pre = document.getElementById('json-content');
                         if (pre) {
-                            // textContent evita que HTML del JSON se ejecute
                             pre.textContent = JSON.stringify(data.contenido, null, 2);
                         }
                     })
@@ -1593,7 +1583,6 @@ def home():
     </body>
     </html>
     """
-    # ⚠️ html.escape para evitar XSS almacenado vía /cargar-json
     html_page = html_page.replace(
         "__CONTENIDO_JSON__",
         html.escape(json.dumps(contenido, indent=2, ensure_ascii=False))
