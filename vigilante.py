@@ -791,11 +791,11 @@ def construir_resumen_completo(plazas_actuales, plazas_anteriores, total_mapa, c
 
             # 🆕 se muestra solo si:
             #   (a) la plaza es nueva respecto al scrape anterior, Y
-            #   (b) lleva publicada al menos 2 minutos
+            #   (b) lleva publicada al menos 3 minutos
             #       (fecha de publicación = fecha_cierre - 24 h)
             es_nueva = (
                 p["id"] in ids_nuevas
-                and es_plaza_publicada_hace_al_menos(p, minutos=2, ahora=ahora)
+                and es_plaza_publicada_hace_al_menos(p, minutos=3, ahora=ahora)
             )
             label = " 🆕" if es_nueva else ""
             lineas.append(f"  • {area_esc} ({municipio_esc} - {zona_esc}){label} – {p['postulados']} postulados")
