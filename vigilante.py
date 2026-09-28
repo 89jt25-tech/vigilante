@@ -634,6 +634,23 @@ def parsear_fecha_cierre(cierre_texto):
         return None
 
 
+def es_plaza_publicada_hace_al_menos(plaza, minutos=2, ahora=None):
+    """
+    Devuelve True si la plaza lleva publicada al menos `minutos`.
+
+    La fecha de publicación se calcula como: fecha_cierre - 24 horas.
+    Si la fecha de cierre no se puede parsear, devuelve False
+    (no queremos mostrar 🆕 si no sabemos cuándo se publicó).
+    """
+    if ahora is None:
+        ahora = datetime.now(ZONA_COLOMBIA)
+    fecha_cierre = parsear_fecha_cierre(plaza.get("cierre"))
+    if not fecha_cierre:
+        return False
+    fecha_publicacion = fecha_cierre - timedelta(hours=24)
+    return (ahora - fecha_publicacion) >= timedelta(minutes=minutos)
+
+
 def limpiar_plazas_vencidas(plazas):
     ahora = datetime.now(ZONA_COLOMBIA)
     vigentes = []
@@ -738,6 +755,7 @@ def ejecutar_vigilante(notificar_siempre=False, chat_id=None):
 
 
 def construir_resumen_completo(plazas_actuales, plazas_anteriores, total_mapa, cambios, total_mapa_anterior):
+    ahora = datetime.now(ZONA_COLOMBIA)
     total_hoy, total_ayer = contar_plazas_por_activacion(plazas_actuales)
 
     lineas = []
@@ -770,7 +788,15 @@ def construir_resumen_completo(plazas_actuales, plazas_anteriores, total_mapa, c
             area_esc = html.escape(abreviar_area(p["area"]))
             municipio_esc = html.escape(p["municipio"])
             zona_esc = html.escape(p["zona_tipo"])
-            es_nueva = p["id"] in ids_nuevas
+
+            # 🆕 se muestra solo si:
+            #   (a) la plaza es nueva respecto al scrape anterior, Y
+            #   (b) lleva publicada al menos 2 minutos
+            #       (fecha de publicación = fecha_cierre - 24 h)
+            es_nueva = (
+                p["id"] in ids_nuevas
+                and es_plaza_publicada_hace_al_menos(p, minutos=2, ahora=ahora)
+            )
             label = " 🆕" if es_nueva else ""
             lineas.append(f"  • {area_esc} ({municipio_esc} - {zona_esc}){label} – {p['postulados']} postulados")
         lineas.append("")
