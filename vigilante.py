@@ -32,14 +32,13 @@ DATA_DIR = os.environ.get("DATA_DIR", ".")
 os.makedirs(DATA_DIR, exist_ok=True)
 ARCHIVO_DATOS = os.path.join(DATA_DIR, "plazas.json")
 ARCHIVO_CONTEOS = os.path.join(DATA_DIR, "conteo_deptos.json")
+ARCHIVO_RESUMENES = os.path.join(DATA_DIR, "ultimo_resumen.json")
 
 # Ciclo rápido: 1 GET al mapa + scraping solo de departamentos cuyo conteo cambió.
 INTERVALO_RAPIDO = int(os.environ.get("INTERVALO_VIGILANTE_SEGUNDOS", 30))
 # Barrido completo (refresca postulados y atrapa cambios que el conteo no ve).
 INTERVALO_BARRIDO = int(os.environ.get(
     "INTERVALO_BARRIDO_SEGUNDOS", os.environ.get("INTERVALO_ACTUALIZACION_POSTULADOS", 600)))
-# Una plaza se pinta con 🆕 si la vimos por primera vez hace menos de N minutos.
-VENTANA_NUEVA_MINUTOS = int(os.environ.get("NUEVA_MAX_MINUTOS", 30))
 
 MAX_PAGINAS = 60
 FILAS_POR_PAGINA = 6
@@ -436,16 +435,30 @@ def contar_plazas_por_activacion(plazas):
     return c_hoy, c_ayer
 
 
-def es_plaza_nueva(p):
-    """🆕 = la vimos por primera vez hace menos de VENTANA_NUEVA_MINUTOS."""
+def es_plaza_nueva(p, desde=None):
+    """🆕 = la plaza apareció DESPUÉS de la última vez que este chat recibió el resumen completo."""
     fs = p.get("first_seen")
-    if not fs:
+    if desde is None or not fs:
         return False
     try:
-        visto = datetime.fromisoformat(fs)
+        return datetime.fromisoformat(fs) > desde
     except ValueError:
         return False
-    return (_ahora() - visto).total_seconds() < VENTANA_NUEVA_MINUTOS * 60
+
+
+def _desde_ultimo_resumen(chat_id):
+    valor = _leer_json(ARCHIVO_RESUMENES, {}).get(str(chat_id))
+    try:
+        return datetime.fromisoformat(valor) if valor else None
+    except ValueError:
+        return None
+
+
+def _marcar_resumen_enviado(chat_id):
+    with lock_json:
+        datos = _leer_json(ARCHIVO_RESUMENES, {})
+        datos[str(chat_id)] = _ahora().isoformat()
+        _escritura_atomica_json(ARCHIVO_RESUMENES, datos)
 
 
 # ============================================================
@@ -576,8 +589,9 @@ def notificar_nuevas_pendientes():
         return len(pendientes)
 
 
-def construir_resumen(plazas, encabezado=None):
+def construir_resumen(plazas, encabezado=None, chat_id=None):
     hoy, ayer = contar_plazas_por_activacion(plazas)
+    desde = _desde_ultimo_resumen(chat_id) if chat_id is not None else None
     lineas = ["🚨 <b>¡Plazas Sistema Maestro!</b> 🚨", ""]
     if encabezado:
         lineas.append(f"🔎 <b>Filtro:</b> {html.escape(encabezado)}")
@@ -595,7 +609,7 @@ def construir_resumen(plazas, encabezado=None):
     for depto in sorted(deptos):
         lineas.append(f"📌 <b>{html.escape(depto)}</b>")
         for p in sorted(deptos[depto], key=lambda x: x["area"]):
-            marca = " 🆕" if es_plaza_nueva(p) else ""
+            marca = " 🆕" if es_plaza_nueva(p, desde) else ""
             lineas.append(
                 f"  • {html.escape(abreviar_area(p['area']))} "
                 f"({html.escape(p['municipio'])} - {html.escape(p['zona_tipo'])}){marca} "
@@ -757,7 +771,7 @@ def _procesar_seleccion_menu(chat_id, texto):
         elegido = ops[sel - 1]
         campo, etiqueta = ("departamento", "Departamento") if tipo == "departamento_lista" else ("area", "Área")
         plazas = [p for p in cargar_datos_anteriores() if (p.get(campo) or "").strip() == elegido]
-        enviar_telegram(construir_resumen(plazas, f"{etiqueta}: {elegido}"), chat_id=chat_id)
+        enviar_telegram(construir_resumen(plazas, f"{etiqueta}: {elegido}", chat_id=chat_id), chat_id=chat_id)
         with lock_menu:
             estados_menu_chat.pop(chat_id, None)
         return True
@@ -772,7 +786,8 @@ def _procesar_comando_actualizar(chat_id):
         enviar_telegram("🔎 Actualizando plazas, dame un momento...", chat_id=chat_id)
         resultado = ciclo_rapido(forzar_todos=True)
         _marcar_estado("barrido", resultado)
-        enviar_telegram(construir_resumen(cargar_datos_anteriores()), chat_id=chat_id)
+        if enviar_telegram(construir_resumen(cargar_datos_anteriores(), chat_id=chat_id), chat_id=chat_id):
+            _marcar_resumen_enviado(chat_id)
     except Exception as e:
         enviar_telegram(f"⚠️ Error al actualizar: {str(e)[:200]}", chat_id=chat_id)
     finally:
@@ -847,7 +862,6 @@ def status():
         return {
             "intervalo_rapido_s": INTERVALO_RAPIDO,
             "intervalo_barrido_s": INTERVALO_BARRIDO,
-            "ventana_nueva_minutos": VENTANA_NUEVA_MINUTOS,
             "total_plazas": len(plazas),
             "pendientes_de_notificar": sum(1 for p in plazas if p.get("notificada") is False),
             "rapido": estado["rapido"],
@@ -861,7 +875,7 @@ def debug_nuevas():
     filas = [{
         "departamento": p.get("departamento"), "municipio": p.get("municipio"), "area": p.get("area"),
         "cierre": p.get("cierre"), "first_seen": p.get("first_seen"),
-        "notificada": p.get("notificada"), "lleva_icono_nuevo": es_plaza_nueva(p),
+        "notificada": p.get("notificada"),
     } for p in plazas]
     filas.sort(key=lambda f: f["first_seen"] or "", reverse=True)
     return {"ahora": _ahora().isoformat(), "total": len(filas), "detalle": filas}
