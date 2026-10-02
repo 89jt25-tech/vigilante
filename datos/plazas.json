@@ -91,19 +91,6 @@
     "cargo": "Docente de aula"
   },
   {
-    "id": "córdoba|ciencias_sociales|medio_san_jorge|ayapel|02/10/2026_a_las_15:57|córdoba|docente_de_aula|vacantes_generales",
-    "area": "Ciencias sociales",
-    "secretaria": "Córdoba",
-    "zona": "Medio San Jorge",
-    "zona_tipo": "Urbana",
-    "departamento": "Córdoba",
-    "municipio": "Ayapel",
-    "tipo_priorizacion": "Vacantes Generales",
-    "cierre": "02/10/2026 a las 15:57",
-    "postulados": 83,
-    "cargo": "Docente de aula"
-  },
-  {
     "id": "quindío|educación_artística_–_música|valle|la_tebaida|03/10/2026_a_las_10:13|quindío|docente_de_aula|vacantes_generales",
     "area": "Educación artística – música",
     "secretaria": "Quindío",
@@ -153,6 +140,19 @@
     "tipo_priorizacion": "Vacantes Generales",
     "cierre": "02/10/2026 a las 18:19",
     "postulados": 45,
+    "cargo": "Docente de aula"
+  },
+  {
+    "id": "córdoba|ciencias_sociales|medio_san_jorge|ayapel|02/10/2026_a_las_15:57|córdoba|docente_de_aula|vacantes_generales",
+    "area": "Ciencias sociales",
+    "secretaria": "Córdoba",
+    "zona": "Medio San Jorge",
+    "zona_tipo": "Urbana",
+    "departamento": "Córdoba",
+    "municipio": "Ayapel",
+    "tipo_priorizacion": "Vacantes Generales",
+    "cierre": "02/10/2026 a las 15:57",
+    "postulados": 84,
     "cargo": "Docente de aula"
   }
 ]
