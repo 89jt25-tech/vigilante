@@ -24,11 +24,11 @@ ARCHIVO_TOTAL_MAPA = "total_mapa.json"
 ARCHIVO_ULTIMA_ACTUALIZACION = "ultima_actualizacion_completa.json"
 ZONA_COLOMBIA = ZoneInfo("America/Bogota")
 
-# ========== CONFIGURACIÓN GITHUB (persistencia) ==========
-GITHUB_REPO = os.environ["GITHUB_REPO"]                    # "89jt25-tech/vigilante"
-GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]                  # PAT con scope repo / contents:write
-GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")    # rama (NO "datos")
-GITHUB_DATA_DIR = os.environ.get("GITHUB_DATA_DIR", "datos")  # carpeta dentro del repo
+# ========== CONFIGURACIÓN GITHUB ==========
+GITHUB_REPO = os.environ["GITHUB_REPO"]
+GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
+GITHUB_DATA_DIR = os.environ.get("GITHUB_DATA_DIR", "datos")
 
 HEADERS_AJAX = {
     "accept": "application/xml, text/xml, */*; q=0.01",
@@ -38,7 +38,6 @@ HEADERS_AJAX = {
     "User-Agent": "Mozilla/5.0",
 }
 
-# ========== MAPEO DE DEPARTAMENTOS ==========
 DEPARTAMENTOS_CODIGOS = {
     "amazonas": "91",
     "antioquia": "05",
@@ -76,7 +75,6 @@ DEPARTAMENTOS_CODIGOS = {
     "vichada": "99",
 }
 
-# ========== ABREVIATURAS DE ÁREAS ==========
 AREA_ABREVIATURAS = {
     "sin asignación directa": "Sin Asignación",
     "ciencias económicas y políticas": "C. Económicas",
@@ -108,8 +106,7 @@ AREA_ABREVIATURAS = {
 def abreviar_area(area):
     if not area:
         return "Sin área"
-    area_lower = area.lower().strip()
-    return AREA_ABREVIATURAS.get(area_lower, area)
+    return AREA_ABREVIATURAS.get(area.lower().strip(), area)
 
 
 MAX_PAGINAS = 60
@@ -133,7 +130,7 @@ lock_ejecucion_vigilante = threading.Lock()
 
 
 # ============================================================
-# HELPERS GITHUB (persistencia de datos)
+# HELPERS GITHUB
 # ============================================================
 
 def _gh_headers():
@@ -148,15 +145,13 @@ def _gh_path(nombre):
 
 
 def github_leer_archivo(nombre):
-    """Devuelve (contenido_str | None, sha | None)."""
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{_gh_path(nombre)}"
     r = requests.get(url, headers=_gh_headers(), params={"ref": GITHUB_BRANCH}, timeout=20)
     if r.status_code == 404:
         return None, None
     r.raise_for_status()
     data = r.json()
-    contenido = base64.b64decode(data["content"]).decode("utf-8")
-    return contenido, data["sha"]
+    return base64.b64decode(data["content"]).decode("utf-8"), data["sha"]
 
 
 def github_escribir_archivo(nombre, contenido_str, mensaje="Actualizar datos"):
@@ -179,17 +174,15 @@ def github_eliminar_archivo(nombre, mensaje="Eliminar datos"):
     _, sha = github_leer_archivo(nombre)
     if not sha:
         return False
-    r = requests.delete(
-        url, headers=_gh_headers(),
-        json={"message": mensaje, "sha": sha, "branch": GITHUB_BRANCH},
-        timeout=20,
-    )
+    r = requests.delete(url, headers=_gh_headers(),
+                        json={"message": mensaje, "sha": sha, "branch": GITHUB_BRANCH},
+                        timeout=20)
     r.raise_for_status()
     return True
 
 
 # ============================================================
-# CARGA / GUARDADO DE DATOS (a través de GitHub)
+# CARGA / GUARDADO DE DATOS
 # ============================================================
 
 def cargar_datos_anteriores():
@@ -212,7 +205,7 @@ def guardar_datos_actuales(plazas):
             nuevo = json.dumps(plazas, ensure_ascii=False, indent=2)
             actual, _ = github_leer_archivo(ARCHIVO_DATOS)
             if actual == nuevo:
-                return  # sin cambios reales, evitamos commits innecesarios
+                return
             github_escribir_archivo(ARCHIVO_DATOS, nuevo, "Actualizar plazas.json")
         except Exception as e:
             print(f"⚠️ Error guardando {ARCHIVO_DATOS} en GitHub: {e}")
@@ -221,8 +214,7 @@ def guardar_datos_actuales(plazas):
 def obtener_total_plazas_mapa():
     r = requests.get(URL_PAGINA, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     r.raise_for_status()
-    patron = r"alt:\s*'DEP-\d+',\s*title:\s*'([^']+)'"
-    coincidencias = re.findall(patron, r.text)
+    coincidencias = re.findall(r"alt:\s*'DEP-\d+',\s*title:\s*'([^']+)'", r.text)
     return len(coincidencias)
 
 
@@ -247,10 +239,8 @@ def cargar_total_mapa_anterior():
 def guardar_ultima_actualizacion_completa(fecha):
     try:
         contenido = json.dumps({"ultima": fecha.isoformat()})
-        github_escribir_archivo(
-            ARCHIVO_ULTIMA_ACTUALIZACION, contenido,
-            "Actualizar ultima_actualizacion_completa.json",
-        )
+        github_escribir_archivo(ARCHIVO_ULTIMA_ACTUALIZACION, contenido,
+                                "Actualizar ultima_actualizacion_completa.json")
     except Exception as e:
         print(f"⚠️ Error guardando {ARCHIVO_ULTIMA_ACTUALIZACION}: {e}")
 
@@ -294,17 +284,6 @@ def extraer_actualizaciones(xml_texto):
     return resultado
 
 
-def extraer_html_actualizado(xml_texto):
-    try:
-        root = ET.fromstring(xml_texto)
-    except ET.ParseError:
-        return ""
-    for update in root.iter("update"):
-        if update.get("id") == "form-busqueda:tabla-vacantes":
-            return update.text or ""
-    return ""
-
-
 def extraer_campo(soup, patron):
     etiqueta = soup.find("label", string=re.compile(patron))
     if etiqueta:
@@ -335,7 +314,7 @@ def parsear_vacantes(html_fragmento):
         id_plaza = f"{departamento}|{area}|{zona_geografica}|{municipio}|{cierre}|{secretaria}|{cargo}|{tipo}"
         id_plaza = id_plaza.lower().replace(" ", "_")
 
-        vacante = {
+        vacantes.append({
             "id": id_plaza,
             "area": area or "Sin área",
             "secretaria": secretaria or "Sin secretaría",
@@ -347,8 +326,7 @@ def parsear_vacantes(html_fragmento):
             "cierre": cierre,
             "postulados": postulados,
             "cargo": cargo or "Sin cargo",
-        }
-        vacantes.append(vacante)
+        })
     return vacantes
 
 
@@ -360,12 +338,10 @@ def expandir_todos_detalles(session, viewstate, html_actual):
     while intentos < max_intentos:
         enlaces = soup.select('div.vacante a.ui-commandlink')
         enlaces_ver = [a for a in enlaces if a.get_text(strip=True) == "Ver detalle"]
-
         if not enlaces_ver:
             break
 
-        enlace = enlaces_ver[0]
-        source_id = enlace.get('id')
+        source_id = enlaces_ver[0].get('id')
         if not source_id:
             break
 
@@ -392,12 +368,10 @@ def expandir_todos_detalles(session, viewstate, html_actual):
         response = session.post(URL_PAGINA, headers=HEADERS_AJAX, data=data, timeout=30)
         resultado = extraer_actualizaciones(response.text)
 
-        nuevo_viewstate = resultado.get("viewstate")
-        if nuevo_viewstate:
-            viewstate = nuevo_viewstate
-        nuevo_html = resultado.get("html")
-        if nuevo_html:
-            html_actual = nuevo_html
+        if resultado.get("viewstate"):
+            viewstate = resultado["viewstate"]
+        if resultado.get("html"):
+            html_actual = resultado["html"]
         else:
             break
 
@@ -445,8 +419,7 @@ def cambiar_filtro_departamento(session, viewstate, codigo_departamento):
     }
     r = session.post(URL_PAGINA, headers=HEADERS_AJAX, data=data, timeout=30)
     resultado = extraer_actualizaciones(r.text)
-    nuevo_viewstate = resultado["viewstate"] or viewstate
-    return resultado["html"], nuevo_viewstate
+    return resultado["html"], resultado["viewstate"] or viewstate
 
 
 def pedir_pagina_filtrada(session, viewstate, first, rows, codigo_departamento):
@@ -482,8 +455,7 @@ def pedir_pagina_filtrada(session, viewstate, first, rows, codigo_departamento):
     html_frag = resultado["html"]
 
     try:
-        html_expandido, nuevo_viewstate = expandir_todos_detalles(session, nuevo_viewstate, html_frag)
-        return html_expandido, nuevo_viewstate
+        return expandir_todos_detalles(session, nuevo_viewstate, html_frag)
     except Exception as e:
         print(f"⚠️ Error al expandir detalles en página {first//rows + 1}: {e}")
         return html_frag, nuevo_viewstate
@@ -525,8 +497,7 @@ def obtener_vacantes_por_departamento(nombre_departamento):
 def obtener_departamentos_del_mapa():
     r = requests.get(URL_PAGINA, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     r.raise_for_status()
-    patron = r"alt:\s*'DEP-\d+',\s*title:\s*'([^']+)'"
-    titulos = re.findall(patron, r.text)
+    titulos = re.findall(r"alt:\s*'DEP-\d+',\s*title:\s*'([^']+)'", r.text)
     deptos = set()
     for t in titulos:
         partes = t.split(" - ")
@@ -535,28 +506,13 @@ def obtener_departamentos_del_mapa():
     return deptos
 
 
-def fusionar_plazas(plazas_bd, plazas_scrapeadas):
-    bd_por_id = {p["id"]: dict(p) for p in plazas_bd}
-    ids_nuevas = set()
-    for p in plazas_scrapeadas:
-        if p["id"] in bd_por_id:
-            bd_por_id[p["id"]].update(p)
-        else:
-            bd_por_id[p["id"]] = dict(p)
-            ids_nuevas.add(p["id"])
-    return list(bd_por_id.values()), ids_nuevas
-
-
 def fusionar_plazas_reconciliando(plazas_bd, plazas_scrapeadas, departamento):
     ids_scrapeadas = {p["id"] for p in plazas_scrapeadas}
-
     conservadas = [p for p in plazas_bd if p.get("departamento") != departamento]
-
     bd_depto_por_id = {
         p["id"]: p for p in plazas_bd
         if p.get("departamento") == departamento and p["id"] in ids_scrapeadas
     }
-
     ids_nuevas = set()
     for p in plazas_scrapeadas:
         if p["id"] in bd_depto_por_id:
@@ -564,18 +520,12 @@ def fusionar_plazas_reconciliando(plazas_bd, plazas_scrapeadas, departamento):
         else:
             bd_depto_por_id[p["id"]] = dict(p)
             ids_nuevas.add(p["id"])
-
-    resultado = conservadas + list(bd_depto_por_id.values())
-    return resultado, ids_nuevas
+    return conservadas + list(bd_depto_por_id.values()), ids_nuevas
 
 
 def fusionar_plazas_reconciliando_seguro(plazas_bd, plazas_scrapeadas, departamento, cantidad_esperada=None):
     if cantidad_esperada is not None and len(plazas_scrapeadas) < cantidad_esperada:
-        print(
-            f"⚠️ Scrape incompleto de {departamento}: se obtuvieron "
-            f"{len(plazas_scrapeadas)} de {cantidad_esperada} esperadas según el mapa. "
-            f"No se reconcilia (no se borra nada), solo se agrega/actualiza."
-        )
+        print(f"⚠️ Scrape incompleto de {departamento}: {len(plazas_scrapeadas)}/{cantidad_esperada}. Solo merge aditivo.")
         bd_por_id = {p["id"]: dict(p) for p in plazas_bd}
         ids_nuevas = set()
         for p in plazas_scrapeadas:
@@ -585,7 +535,6 @@ def fusionar_plazas_reconciliando_seguro(plazas_bd, plazas_scrapeadas, departame
                 bd_por_id[p["id"]] = dict(p)
                 ids_nuevas.add(p["id"])
         return list(bd_por_id.values()), ids_nuevas
-
     return fusionar_plazas_reconciliando(plazas_bd, plazas_scrapeadas, departamento)
 
 
@@ -606,7 +555,7 @@ def actualizar_postulados_departamento(nombre_departamento, conteo_mapa=None):
         try:
             conteo_mapa = obtener_conteo_marcadores_por_departamento()
         except Exception as e:
-            print(f"⚠️ No se pudo obtener conteo del mapa, se reconcilia sin verificación: {e}")
+            print(f"⚠️ No se pudo obtener conteo del mapa: {e}")
             conteo_mapa = {}
 
     cantidad_esperada = conteo_mapa.get(nombre_departamento)
@@ -623,7 +572,7 @@ def actualizar_postulados_departamento(nombre_departamento, conteo_mapa=None):
         total_despues = len([p for p in plazas_bd if p.get("departamento") == nombre_departamento])
         eliminadas = total_antes - total_despues + len(ids_nuevas)
         if eliminadas > 0:
-            print(f"🗑️ Reconciliación {nombre_departamento}: {eliminadas} plaza(s) fantasma eliminada(s)")
+            print(f"🗑️ Reconciliación {nombre_departamento}: {eliminadas} fantasma(s)")
 
     return len(plazas_scrapeadas), len(ids_nuevas)
 
@@ -633,39 +582,36 @@ def hilo_actualizador_postulados():
     while True:
         adquirido = lock_ejecucion_vigilante.acquire(blocking=False)
         if not adquirido:
-            print("⏳ Hilo actualizador: el vigilante ya está scrapeando, se omite este ciclo.")
             time.sleep(INTERVALO_ACTUALIZACION_POSTULADOS)
             continue
-
         try:
             with lock_json:
                 plazas_bd = cargar_datos_anteriores()
                 vigentes, vencidas = limpiar_plazas_vencidas(plazas_bd)
                 if vencidas:
                     guardar_datos_actuales(vigentes)
-                    print(f"🗑️ {len(vencidas)} plaza(s) vencida(s) eliminada(s) automáticamente.")
+                    print(f"🗑️ {len(vencidas)} plaza(s) vencida(s) eliminada(s).")
 
             departamentos = obtener_departamentos_en_json()
             if departamentos:
-                print(f"🔄 Refrescando postulados de {len(departamentos)} departamento(s): {', '.join(departamentos)}")
+                print(f"🔄 Refrescando postulados: {', '.join(departamentos)}")
 
             try:
                 conteo_mapa = obtener_conteo_marcadores_por_departamento()
             except Exception as e:
-                print(f"⚠️ No se pudo obtener conteo del mapa para este ciclo: {e}")
+                print(f"⚠️ Sin conteo del mapa: {e}")
                 conteo_mapa = {}
 
             for depto in departamentos:
                 try:
                     encontradas, nuevas = actualizar_postulados_departamento(depto, conteo_mapa=conteo_mapa)
-                    print(f"   ✔ {depto}: {encontradas} plazas revisadas, {nuevas} nueva(s)")
+                    print(f"   ✔ {depto}: {encontradas} revisadas, {nuevas} nueva(s)")
                 except Exception as e:
-                    print(f"   ✘ Error actualizando postulados de '{depto}': {e}")
+                    print(f"   ✘ Error en '{depto}': {e}")
         except Exception as e:
-            print(f"⚠️ Error en hilo actualizador de postulados: {e}")
+            print(f"⚠️ Error en hilo actualizador: {e}")
         finally:
             lock_ejecucion_vigilante.release()
-
         time.sleep(INTERVALO_ACTUALIZACION_POSTULADOS)
 
 
@@ -673,8 +619,7 @@ def hilo_vigilante_automatico():
     print(f"🧵 Hilo vigilante automático iniciado (cada {INTERVALO_VIGILANTE_SEGUNDOS}s).")
     time.sleep(5)
     while True:
-        adquirido = lock_ejecucion_vigilante.acquire(blocking=False)
-        if not adquirido:
+        if not lock_ejecucion_vigilante.acquire(blocking=False):
             time.sleep(INTERVALO_VIGILANTE_SEGUNDOS)
             continue
         try:
@@ -685,28 +630,26 @@ def hilo_vigilante_automatico():
                 estado_vigilante_automatico["ejecuciones"] += 1
             print(f"🔍 Chequeo automático: {resultado}")
         except Exception as e:
-            print(f"⚠️ Error en hilo vigilante automático: {e}")
+            print(f"⚠️ Error en vigilante automático: {e}")
         finally:
             lock_ejecucion_vigilante.release()
         time.sleep(INTERVALO_VIGILANTE_SEGUNDOS)
 
 
-# ========== ELIMINAR PLAZAS VENCIDAS ==========
+# ========== PLAZAS VENCIDAS ==========
 
 def parsear_fecha_cierre(cierre_texto):
     if not cierre_texto:
         return None
     try:
-        fecha_naive = datetime.strptime(cierre_texto.strip(), "%d/%m/%Y a las %H:%M")
-        return fecha_naive.replace(tzinfo=ZONA_COLOMBIA)
+        return datetime.strptime(cierre_texto.strip(), "%d/%m/%Y a las %H:%M").replace(tzinfo=ZONA_COLOMBIA)
     except ValueError:
         return None
 
 
 def limpiar_plazas_vencidas(plazas):
     ahora = datetime.now(ZONA_COLOMBIA)
-    vigentes = []
-    vencidas = []
+    vigentes, vencidas = [], []
     for p in plazas:
         fecha_cierre = parsear_fecha_cierre(p.get("cierre"))
         if fecha_cierre and fecha_cierre <= ahora:
@@ -719,12 +662,10 @@ def limpiar_plazas_vencidas(plazas):
 def obtener_conteo_marcadores_por_departamento():
     r = requests.get(URL_PAGINA, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     r.raise_for_status()
-    patron = r"alt:\s*'DEP-\d+',\s*title:\s*'([^']+)'"
-    titulos = re.findall(patron, r.text)
+    titulos = re.findall(r"alt:\s*'DEP-\d+',\s*title:\s*'([^']+)'", r.text)
     contador = Counter()
     for t in titulos:
-        nombre = t.split(" - ")[0].strip()
-        contador[nombre] += 1
+        contador[t.split(" - ")[0].strip()] += 1
     return contador
 
 
@@ -746,10 +687,10 @@ def ejecutar_vigilante(notificar_siempre=False, chat_id=None):
         try:
             conteo_mapa = obtener_conteo_marcadores_por_departamento()
         except Exception as e:
-            print(f"⚠️ No se pudo obtener conteo del mapa para este ciclo: {e}")
+            print(f"⚠️ Sin conteo del mapa: {e}")
             conteo_mapa = {}
 
-        print("🔄 Ejecutando scraping completo de todos los departamentos...")
+        print("🔄 Scraping completo de todos los departamentos...")
         deptos_mapa = obtener_departamentos_del_mapa()
         ids_nuevas_totales = set()
 
@@ -767,37 +708,28 @@ def ejecutar_vigilante(notificar_siempre=False, chat_id=None):
                 total_despues_depto = len([p for p in plazas_bd if p.get("departamento") == depto])
                 eliminadas_depto = total_antes_depto - total_despues_depto + len(ids_nuevas_depto)
                 if eliminadas_depto > 0:
-                    print(f"🗑️ Reconciliación {depto}: {eliminadas_depto} plaza(s) fantasma eliminada(s)")
+                    print(f"🗑️ Reconciliación {depto}: {eliminadas_depto} fantasma(s)")
             except Exception as e:
                 print(f"⚠️ Error scraping {depto}: {e}")
 
         guardar_datos_actuales(plazas_bd)
         guardar_ultima_actualizacion_completa(datetime.now(ZONA_COLOMBIA))
-        ids_nuevas = ids_nuevas_totales
 
         cambios = detectar_cambios_completos(plazas_bd, plazas_antes)
-
         hay_cambios = (cambios["total_nuevas"] > 0 or
                        cambios["total_eliminadas"] > 0 or
                        len(plazas_vencidas) > 0)
 
-        debe_notificar = hay_cambios or notificar_siempre
-
-        if debe_notificar:
+        if hay_cambios or notificar_siempre:
             resumen = construir_resumen_completo(
-                plazas_bd,
-                plazas_antes,
-                total_mapa,
-                cambios,
-                total_mapa_anterior,
+                plazas_bd, plazas_antes, total_mapa, cambios, total_mapa_anterior
             )
             enviar_telegram(resumen, chat_id=chat_id)
             guardar_total_mapa_actual(total_mapa)
             return "Notificación enviada."
         else:
-            mensaje_sin_cambios = "✅ Vigilante ejecutado: no hay cambios nuevos respecto a la última revisión."
             if chat_id is not None:
-                enviar_telegram(mensaje_sin_cambios, chat_id=chat_id)
+                enviar_telegram("✅ Vigilante ejecutado: sin cambios nuevos.", chat_id=chat_id)
             guardar_total_mapa_actual(total_mapa)
             return "Sin cambios notificables."
 
@@ -808,9 +740,7 @@ def ejecutar_vigilante(notificar_siempre=False, chat_id=None):
 def construir_resumen_completo(plazas_actuales, plazas_anteriores, total_mapa, cambios, total_mapa_anterior):
     total_hoy, total_ayer = contar_plazas_por_activacion(plazas_actuales)
 
-    lineas = []
-    lineas.append("🚨 <b>¡ACTUALIZACIÓN DE PLAZAS SISTEMA MAESTRO!</b> 🚨")
-    lineas.append("")
+    lineas = ["🚨 <b>¡ACTUALIZACIÓN DE PLAZAS SISTEMA MAESTRO!</b> 🚨", ""]
 
     diferencia = total_mapa - total_mapa_anterior if total_mapa_anterior is not None else 0
     if diferencia > 0:
@@ -837,14 +767,12 @@ def construir_resumen_completo(plazas_actuales, plazas_anteriores, total_mapa, c
             area_esc = html.escape(abreviar_area(p["area"]))
             municipio_esc = html.escape(p["municipio"])
             zona_esc = html.escape(p["zona_tipo"])
-            es_nueva = p["id"] in ids_nuevas_set
-            label = " 🆕" if es_nueva else ""
+            label = " 🆕" if p["id"] in ids_nuevas_set else ""
             lineas.append(f"  • {area_esc} ({municipio_esc} - {zona_esc}){label} – {p['postulados']} postulados")
         lineas.append("")
 
     lineas.append("")
     lineas.append(f'🔗 <a href="{URL_PAGINA}">Ir a la página Sistema Maestro</a>')
-
     return "\n".join(lineas)
 
 
@@ -852,9 +780,7 @@ def detectar_cambios_completos(plazas_actuales, plazas_anteriores):
     anteriores_por_id = {p["id"]: p for p in plazas_anteriores}
     actuales_por_id = {p["id"]: p for p in plazas_actuales}
 
-    nuevas = []
-    eliminadas = []
-    actualizadas = []
+    nuevas, eliminadas, actualizadas = [], [], []
 
     for id_plaza, p_actual in actuales_por_id.items():
         if id_plaza not in anteriores_por_id:
@@ -884,153 +810,19 @@ def detectar_cambios_completos(plazas_actuales, plazas_anteriores):
     }
 
 
-def obtener_departamentos_pendientes():
-    deptos_mapa = obtener_departamentos_del_mapa()
-    plazas_json = cargar_datos_anteriores()
-    contador_json = defaultdict(int)
-    for p in plazas_json:
-        depto = p.get("departamento", "").strip()
-        if depto:
-            contador_json[depto] += 1
-
-    r = requests.get(URL_PAGINA, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
-    r.raise_for_status()
-    patron = r'L\.marker\(\[.*?\],\s*\{[^}]*title:\s*[\'"]([^\'"]+)[\'"][^}]*\}\)'
-    coincidencias = re.findall(patron, r.text, re.DOTALL)
-    if not coincidencias:
-        patron2 = r'title:\s*[\'"]([^\'"]+)[\'"]'
-        coincidencias = re.findall(patron2, r.text, re.DOTALL)
-
-    contador_mapa = Counter(coincidencias)
-    pendientes = []
-    for nombre, cantidad_mapa in contador_mapa.items():
-        nombre_depto = nombre.split(" - ")[0].strip()
-        cantidad_json = contador_json.get(nombre_depto, 0)
-        if cantidad_json < cantidad_mapa:
-            pendientes.append(nombre_depto)
-    return pendientes
-
-
-def detectar_cambios(plazas_actuales, plazas_anteriores):
-    anteriores_por_id = {p["id"]: p for p in plazas_anteriores}
-    actuales_por_id = {p["id"]: p for p in plazas_actuales}
-
-    nuevas = []
-    actualizadas = []
-    sin_cambios = []
-
-    for id_plaza, p_actual in actuales_por_id.items():
-        if id_plaza not in anteriores_por_id:
-            nuevas.append(p_actual)
-        else:
-            p_anterior = anteriores_por_id[id_plaza]
-            if p_actual["postulados"] != p_anterior["postulados"]:
-                actualizadas.append({
-                    "id": id_plaza,
-                    "departamento": p_actual["departamento"],
-                    "area": p_actual["area"],
-                    "postulados_anterior": p_anterior["postulados"],
-                    "postulados_actual": p_actual["postulados"],
-                })
-            else:
-                sin_cambios.append(p_actual)
-
-    return {
-        "nuevas": nuevas,
-        "actualizadas": actualizadas,
-        "sin_cambios": sin_cambios,
-        "total_nuevas": len(nuevas),
-        "total_actualizadas": len(actualizadas),
-    }
-
-
 def contar_plazas_por_activacion(plazas):
     ahora = datetime.now(ZONA_COLOMBIA)
-    hoy = ahora.date()
-    ayer = hoy - timedelta(days=1)
-    contador_hoy = 0
-    contador_ayer = 0
-
+    hoy, ayer = ahora.date(), (ahora.date() - timedelta(days=1))
+    contador_hoy, contador_ayer = 0, 0
     for p in plazas:
-        cierre_texto = p.get("cierre")
-        fecha_cierre = parsear_fecha_cierre(cierre_texto)
+        fecha_cierre = parsear_fecha_cierre(p.get("cierre"))
         if fecha_cierre:
             fecha_activacion = fecha_cierre - timedelta(days=1)
             if fecha_activacion.date() == hoy:
                 contador_hoy += 1
             elif fecha_activacion.date() == ayer:
                 contador_ayer += 1
-
     return contador_hoy, contador_ayer
-
-
-def construir_resumen(plazas_bd, plazas_scrapeadas, total_mapa, ids_nuevas=None, total_mapa_anterior=None):
-    ids_nuevas = ids_nuevas or set()
-
-    total_hoy_json, total_ayer_calculado = contar_plazas_por_activacion(plazas_bd)
-
-    deptos = defaultdict(list)
-    for p in plazas_bd:
-        deptos[p["departamento"]].append(p)
-
-    lineas = []
-    lineas.append("🚨 <b>¡Plazas Sistema Maestro!</b> 🚨")
-    lineas.append("")
-
-    if total_mapa_anterior is not None:
-        diferencia = total_mapa - total_mapa_anterior
-        if diferencia > 0:
-            lineas.append(f"🌎 <b>Total plazas activas:</b> {total_mapa} <b>(+{diferencia})</b> ⬆️")
-        elif diferencia < 0:
-            lineas.append(f"🌎 <b>Total plazas activas:</b> {total_mapa} <b>({diferencia})</b> ⬇️")
-        else:
-            lineas.append(f"🌎 <b>Total plazas activas:</b> {total_mapa} ↔️")
-    else:
-        lineas.append(f"🌎 <b>Total plazas activas:</b> {total_mapa}")
-
-    lineas.append(f"🆕 <b>Plazas de hoy:</b> {total_hoy_json}")
-    lineas.append(f"📅 <b>Plazas de ayer:</b> {total_ayer_calculado}")
-
-    lineas.append("")
-    lineas.append("--- <b>TODAS LAS PLAZAS</b> ---")
-    lineas.append("")
-
-    plazas_anteriores = cargar_datos_anteriores()
-    anteriores_por_id = {p["id"]: p for p in plazas_anteriores}
-
-    for depto in sorted(deptos.keys()):
-        lineas.append(f"📌 <b>{html.escape(depto)}</b>")
-        for p in sorted(deptos[depto], key=lambda x: x["area"]):
-            es_nueva = p["id"] in ids_nuevas
-
-            cambio = None
-            if not es_nueva and p["id"] in anteriores_por_id:
-                anterior = anteriores_por_id[p["id"]]
-                if p["postulados"] != anterior["postulados"]:
-                    cambio = (anterior["postulados"], p["postulados"])
-
-            area_esc = html.escape(abreviar_area(p["area"]))
-            municipio_esc = html.escape(p["municipio"])
-            zona_esc = html.escape(p["zona_tipo"])
-
-            if es_nueva:
-                linea = f"  • {area_esc} ({municipio_esc} - {zona_esc}) 🆕 – {p['postulados']} postulados"
-            else:
-                flecha = ""
-                if cambio:
-                    if cambio[1] > cambio[0]:
-                        flecha = " ↑"
-                    elif cambio[1] < cambio[0]:
-                        flecha = " ↓"
-                linea = f"  • {area_esc} ({municipio_esc}){flecha} – {p['postulados']} postulados"
-
-            lineas.append(linea)
-        lineas.append("")
-
-    lineas.append("")
-    lineas.append(f'🔗 <a href="{URL_PAGINA}">Ir a la página Sistema Maestro</a>')
-
-    return "\n".join(lineas)
 
 
 def enviar_telegram(mensaje, chat_id=None):
@@ -1038,57 +830,45 @@ def enviar_telegram(mensaje, chat_id=None):
     LIMITE = 4000
     destino = chat_id if chat_id is not None else TELEGRAM_CHAT_ID
 
-    partes = _dividir_mensaje(mensaje, LIMITE)
-
-    for i, parte in enumerate(partes, start=1):
-        datos = {"chat_id": destino, "text": parte, "parse_mode": "HTML"}
+    for i, parte in enumerate(_dividir_mensaje(mensaje, LIMITE), start=1):
         try:
-            r = requests.post(url, data=datos, timeout=10)
+            r = requests.post(url, data={"chat_id": destino, "text": parte, "parse_mode": "HTML"}, timeout=10)
             if r.status_code != 200:
-                print(f"⚠️ Error Telegram (parte {i}/{len(partes)}): {r.status_code} - {r.text}")
+                print(f"⚠️ Error Telegram (parte {i}): {r.status_code} - {r.text}")
         except Exception as e:
-            print(f"⚠️ Error Telegram (parte {i}/{len(partes)}): {e}")
+            print(f"⚠️ Error Telegram (parte {i}): {e}")
 
 
 def _dividir_mensaje(mensaje, limite):
     lineas = mensaje.split("\n")
-    partes = []
-    actual = ""
-
+    partes, actual = [], ""
     for linea in lineas:
         candidato = f"{actual}\n{linea}" if actual else linea
-
         if len(candidato) <= limite:
             actual = candidato
             continue
-
         if actual:
             partes.append(actual)
             actual = ""
-
         if len(linea) <= limite:
             actual = linea
         else:
             for i in range(0, len(linea), limite):
                 partes.append(linea[i:i + limite])
-            actual = ""
-
     if actual:
         partes.append(actual)
-
     return partes if partes else [mensaje[:limite]]
 
 
-# ========== MENÚ INTERACTIVO POR TELEGRAM ==========
+# ========== MENÚ INTERACTIVO ==========
 
 lock_estados_menu = threading.Lock()
 estados_menu_chat = {}
 
 
 def obtener_areas_en_json():
-    plazas = cargar_datos_anteriores()
     areas = set()
-    for p in plazas:
+    for p in cargar_datos_anteriores():
         area = (p.get("area") or "").strip()
         if area and area.lower() != "sin área":
             areas.add(area)
@@ -1096,25 +876,20 @@ def obtener_areas_en_json():
 
 
 def filtrar_plazas_por_departamento(nombre_departamento):
-    plazas = cargar_datos_anteriores()
-    return [p for p in plazas if (p.get("departamento") or "").strip() == nombre_departamento]
+    return [p for p in cargar_datos_anteriores() if (p.get("departamento") or "").strip() == nombre_departamento]
 
 
 def filtrar_plazas_por_area(nombre_area):
-    plazas = cargar_datos_anteriores()
-    return [p for p in plazas if (p.get("area") or "").strip() == nombre_area]
+    return [p for p in cargar_datos_anteriores() if (p.get("area") or "").strip() == nombre_area]
 
 
 def construir_resumen_filtrado(plazas_filtradas, encabezado=None):
     total_hoy, total_ayer = contar_plazas_por_activacion(plazas_filtradas)
-
     deptos = defaultdict(list)
     for p in plazas_filtradas:
         deptos[p["departamento"]].append(p)
 
-    lineas = []
-    lineas.append("🚨 <b>¡Plazas Sistema Maestro!</b> 🚨")
-    lineas.append("")
+    lineas = ["🚨 <b>¡Plazas Sistema Maestro!</b> 🚨", ""]
     if encabezado:
         lineas.append(f"🔎 <b>Filtro:</b> {html.escape(encabezado)}")
     lineas.append(f"🌎 <b>Total plazas activas:</b> {len(plazas_filtradas)}")
@@ -1131,37 +906,25 @@ def construir_resumen_filtrado(plazas_filtradas, encabezado=None):
             lineas.append(f"📌 <b>{html.escape(depto)}</b>")
             for p in sorted(deptos[depto], key=lambda x: x["area"]):
                 area_esc = html.escape(abreviar_area(p["area"]))
-                municipio_esc = html.escape(p["municipio"])
-                zona_esc = html.escape(p["zona_tipo"])
-                lineas.append(f"  • {area_esc} ({municipio_esc} - {zona_esc}) – {p['postulados']} postulados")
+                lineas.append(f"  • {area_esc} ({html.escape(p['municipio'])} - {html.escape(p['zona_tipo'])}) – {p['postulados']} postulados")
             lineas.append("")
 
     lineas.append("")
     lineas.append(f'🔗 <a href="{URL_PAGINA}">Ir a la página Sistema Maestro</a>')
-
     return "\n".join(lineas)
 
 
 def _es_comando_menu(texto):
     if not texto:
         return False
-    texto = texto.strip()
-    mencion = f"@{TELEGRAM_BOT_USERNAME}"
-    texto_sin_mencion = texto.replace(mencion, "").strip()
-    candidato = texto_sin_mencion.lower()
-    return candidato in ("menu", "menú", "/menu", "/menú")
+    texto_sin_mencion = texto.strip().replace(f"@{TELEGRAM_BOT_USERNAME}", "").strip()
+    return texto_sin_mencion.lower() in ("menu", "menú", "/menu", "/menú")
 
 
 def _enviar_menu_principal(chat_id):
     with lock_estados_menu:
         estados_menu_chat[chat_id] = {"tipo": "menu_principal"}
-    mensaje = (
-        "📋 <b>Menú principal</b>\n\n"
-        "1. Departamento\n"
-        "2. Áreas\n\n"
-        "Responde con el número de la opción."
-    )
-    enviar_telegram(mensaje, chat_id=chat_id)
+    enviar_telegram("📋 <b>Menú principal</b>\n\n1. Departamento\n2. Áreas\n\nResponde con el número.", chat_id=chat_id)
 
 
 def _enviar_lista_departamentos(chat_id):
@@ -1201,7 +964,6 @@ def _enviar_lista_areas(chat_id):
 def _procesar_seleccion_menu(chat_id, texto):
     with lock_estados_menu:
         estado = estados_menu_chat.get(chat_id)
-
     if not estado:
         return False
 
@@ -1224,19 +986,14 @@ def _procesar_seleccion_menu(chat_id, texto):
     if tipo in ("departamento_lista", "area_lista"):
         opciones = estado.get("opciones", [])
         if not (1 <= seleccion <= len(opciones)):
-            enviar_telegram(
-                f"Opción inválida. Responde un número entre 1 y {len(opciones)}.",
-                chat_id=chat_id,
-            )
+            enviar_telegram(f"Opción inválida. Responde un número entre 1 y {len(opciones)}.", chat_id=chat_id)
             return True
 
         nombre_elegido = opciones[seleccion - 1]
         if tipo == "departamento_lista":
-            plazas_filtradas = filtrar_plazas_por_departamento(nombre_elegido)
-            mensaje = construir_resumen_filtrado(plazas_filtradas, encabezado=f"Departamento: {nombre_elegido}")
+            mensaje = construir_resumen_filtrado(filtrar_plazas_por_departamento(nombre_elegido), f"Departamento: {nombre_elegido}")
         else:
-            plazas_filtradas = filtrar_plazas_por_area(nombre_elegido)
-            mensaje = construir_resumen_filtrado(plazas_filtradas, encabezado=f"Área: {nombre_elegido}")
+            mensaje = construir_resumen_filtrado(filtrar_plazas_por_area(nombre_elegido), f"Área: {nombre_elegido}")
 
         enviar_telegram(mensaje, chat_id=chat_id)
         with lock_estados_menu:
@@ -1248,29 +1005,17 @@ def _procesar_seleccion_menu(chat_id, texto):
     return False
 
 
-# ========== COMANDO "Actualizar" DESDE TELEGRAM ==========
-
 def _es_comando_actualizar(texto):
     if not texto:
         return False
-    texto = texto.strip()
-    mencion = f"@{TELEGRAM_BOT_USERNAME}"
-    texto_sin_mencion = texto.replace(mencion, "").strip()
-    candidato = texto_sin_mencion.lower()
-    if candidato in ("actualizar", "/actualizar"):
-        return True
-    return False
+    texto_sin_mencion = texto.strip().replace(f"@{TELEGRAM_BOT_USERNAME}", "").strip()
+    return texto_sin_mencion.lower() in ("actualizar", "/actualizar")
 
 
 def _procesar_comando_actualizar(chat_id):
-    adquirido = lock_ejecucion_vigilante.acquire(blocking=False)
-    if not adquirido:
-        enviar_telegram(
-            "⏳ Ya hay una actualización en curso. Te aviso cuando termine esa.",
-            chat_id=chat_id,
-        )
+    if not lock_ejecucion_vigilante.acquire(blocking=False):
+        enviar_telegram("⏳ Ya hay una actualización en curso.", chat_id=chat_id)
         return
-
     try:
         enviar_telegram("🔎 Actualizando plazas, dame un momento...", chat_id=chat_id)
         ejecutar_vigilante(notificar_siempre=True, chat_id=chat_id)
@@ -1283,19 +1028,13 @@ def _procesar_comando_actualizar(chat_id):
 @app.route("/telegram-webhook", methods=["POST"])
 def telegram_webhook():
     if TELEGRAM_WEBHOOK_SECRET:
-        secreto_recibido = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-        if secreto_recibido != TELEGRAM_WEBHOOK_SECRET:
+        if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != TELEGRAM_WEBHOOK_SECRET:
             return {"ok": False}, 403
 
-    try:
-        update = request.get_json(silent=True) or {}
-    except Exception:
-        update = {}
-
+    update = request.get_json(silent=True) or {}
     mensaje = update.get("message") or update.get("edited_message") or {}
     texto = mensaje.get("text", "")
-    chat = mensaje.get("chat", {})
-    chat_id = chat.get("id")
+    chat_id = (mensaje.get("chat") or {}).get("id")
 
     if chat_id is not None and _es_comando_menu(texto):
         _enviar_menu_principal(chat_id)
@@ -1305,11 +1044,7 @@ def telegram_webhook():
         return {"ok": True}, 200
 
     if chat_id is not None and _es_comando_actualizar(texto):
-        threading.Thread(
-            target=_procesar_comando_actualizar,
-            args=(chat_id,),
-            daemon=True,
-        ).start()
+        threading.Thread(target=_procesar_comando_actualizar, args=(chat_id,), daemon=True).start()
 
     return {"ok": True}, 200
 
@@ -1317,38 +1052,34 @@ def telegram_webhook():
 @app.route("/set-webhook")
 def set_webhook():
     url_publica = request.host_url.rstrip("/") + "/telegram-webhook"
-    url_api = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook"
     try:
-        r = requests.post(url_api, data={"url": url_publica}, timeout=10)
+        r = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook",
+                          data={"url": url_publica}, timeout=10)
         return {"webhook_configurado": url_publica, "respuesta_telegram": r.json()}
     except Exception as e:
         return {"error": str(e)}, 500
 
 
-# ========== ENDPOINTS DE DIAGNÓSTICO ==========
+# ========== ENDPOINTS ==========
 
 @app.route("/check")
 def check():
-    adquirido = lock_ejecucion_vigilante.acquire(blocking=False)
-    if not adquirido:
-        return {"resultado": "Ya hay una ejecución en curso, se omitió este chequeo."}, 409
+    if not lock_ejecucion_vigilante.acquire(blocking=False):
+        return {"resultado": "Ya hay una ejecución en curso."}, 409
 
-    def tarea_con_lock():
+    def tarea():
         try:
             ejecutar_vigilante(notificar_siempre=False)
-        except Exception as e:
-            print(f"Error en hilo de /check: {e}")
         finally:
             lock_ejecucion_vigilante.release()
 
-    threading.Thread(target=tarea_con_lock, daemon=True).start()
+    threading.Thread(target=tarea, daemon=True).start()
     return {"resultado": "Tarea iniciada en segundo plano"}, 202
 
 
 @app.route("/check-force")
 def check_force():
-    resultado = ejecutar_vigilante(notificar_siempre=True)
-    return {"resultado": resultado}
+    return {"resultado": ejecutar_vigilante(notificar_siempre=True)}
 
 
 @app.route("/status")
@@ -1388,7 +1119,6 @@ def home():
             .btn-info { background-color: #17a2b8; color: white; border: none; }
             .btn-danger { background-color: #dc3545; color: white; border: none; }
             .btn-departamento { background-color: #6c757d; color: white; border: none; padding: 5px 10px; font-size: 12px; margin: 2px; }
-            .btn-departamento:hover { background-color: #5a6268; }
             table { width: 100%; border-collapse: collapse; margin-top: 10px; }
             th, td { padding: 8px; border: 1px solid #ddd; text-align: left; }
             th { background-color: #f2f2f2; }
@@ -1396,344 +1126,128 @@ def home():
     </head>
     <body>
         <h1>🕵️ Vigilante de Vacantes</h1>
-
         <div class="card">
             <h2>Acciones</h2>
-            <button class="btn-primary" onclick="ejecutarCheck()">🚀 Ejecutar vigilante (notificar solo si hay cambios)</button>
-            <button class="btn-success" onclick="ejecutarCheckForce()">📢 Ejecutar vigilante (SIEMPRE notificar)</button>
-            <button class="btn-danger" onclick="limpiarJSON()">🗑️ Limpiar JSON (reiniciar base)</button>
-            <button class="btn-info" onclick="verDepartamentos()">📍 Ver departamentos con plazas</button>
-            <button class="btn-primary" onclick="agregarTodosLosDepartamentos()">🚀 Agregar todos los departamentos pendientes</button>
-            <button class="btn-danger" onclick="limpiarVencidas()">🗑️ Eliminar plazas vencidas</button>
+            <button class="btn-primary" onclick="fetch('/check').then(r=>r.json()).then(d=>document.getElementById('resultado').innerHTML='✅ '+d.resultado)">🚀 Ejecutar (solo si hay cambios)</button>
+            <button class="btn-success" onclick="fetch('/check-force').then(r=>r.json()).then(d=>document.getElementById('resultado').innerHTML='✅ '+d.resultado)">📢 Ejecutar (SIEMPRE notificar)</button>
+            <button class="btn-danger" onclick="limpiarJSON()">🗑️ Limpiar JSON</button>
+            <button class="btn-info" onclick="verDepartamentos()">📍 Ver departamentos</button>
+            <button class="btn-primary" onclick="agregarTodosLosDepartamentos()">🚀 Agregar todos pendientes</button>
+            <button class="btn-danger" onclick="limpiarVencidas()">🗑️ Eliminar vencidas</button>
             <div id="resultado" style="margin-top: 10px; color: green;"></div>
         </div>
-
         <div class="card" id="departamentos-card" style="display: none;">
             <h2>📍 Departamentos con Plazas</h2>
             <div id="departamentos-content"></div>
         </div>
-
         <div class="card">
-            <h2>Contenido del JSON (base de datos en GitHub)</h2>
+            <h2>Contenido del JSON (GitHub)</h2>
             <pre>__CONTENIDO_JSON__</pre>
         </div>
-
         <div class="card">
-            <h2>Cargar JSON manualmente (reemplaza toda la base)</h2>
+            <h2>Cargar JSON manualmente</h2>
             <form id="cargaForm">
-                <textarea name="json" rows="10" placeholder="Pega aquí el JSON (debe ser una lista de objetos)"></textarea><br>
+                <textarea name="json" rows="10" placeholder="Pega aquí el JSON"></textarea><br>
                 <button type="submit">📤 Cargar JSON</button>
             </form>
         </div>
-
         <script>
-            function ejecutarCheck() {
-                fetch('/check')
-                    .then(response => response.json())
-                    .then(data => {
-                        document.getElementById('resultado').innerHTML = '✅ ' + data.resultado;
-                    })
-                    .catch(error => {
-                        document.getElementById('resultado').innerHTML = '❌ Error: ' + error;
-                    });
+            function actualizarContenidoJSON() {
+                fetch('/verjson', {cache:'no-store'}).then(r=>r.json()).then(d=>{
+                    const pre = document.querySelector('pre');
+                    if (pre) pre.textContent = JSON.stringify(d.contenido, null, 2);
+                }).catch(e=>console.error(e));
             }
-
-            function ejecutarCheckForce() {
-                document.getElementById('resultado').innerHTML = '⏳ Enviando notificación...';
-                fetch('/check-force')
-                    .then(response => response.json())
-                    .then(data => {
-                        document.getElementById('resultado').innerHTML = '✅ ' + data.resultado;
-                    })
-                    .catch(error => {
-                        document.getElementById('resultado').innerHTML = '❌ Error: ' + error;
-                    });
-            }
+            setInterval(actualizarContenidoJSON, 30000);
 
             function verDepartamentos() {
                 const card = document.getElementById('departamentos-card');
                 const content = document.getElementById('departamentos-content');
-
                 card.style.display = 'block';
-                content.innerHTML = '⏳ Cargando departamentos...';
-
-                fetch('/departamentos')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.error) {
-                            content.innerHTML = `❌ ${data.error}`;
-                            return;
-                        }
-
-                        let html = `
-                            <p><b>Total plazas (mapa):</b> ${data.total}</p>
-                            <p><b>Departamentos únicos:</b> ${data.departamentos_unicos}</p>
-                            <br>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Departamento</th>
-                                        <th style="text-align: center;">Cantidad de plazas</th>
-                                        <th style="text-align: center;">Acción</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                        `;
-
-                        data.departamentos.forEach((d, index) => {
-                            const bgColor = index % 2 === 0 ? '#ffffff' : '#f9f9f9';
-                            const completo = d.en_json >= d.cantidad;
-                            const btnClass = completo ? 'btn-success' : 'btn-warning';
-                            const btnText = completo ? '✅ Completo' : `📥 Agregar ${d.cantidad} plazas`;
-                            const disabled = completo ? 'disabled' : '';
-                            html += `
-                                <tr style="background-color: ${bgColor};">
-                                    <td><b>${d.nombre}</b></td>
-                                    <td style="text-align: center;"><b>${d.cantidad}</b> (JSON: ${d.en_json})</td>
-                                    <td style="text-align: center;">
-                                        <button class="btn-departamento ${btnClass}" onclick="agregarDepartamento('${d.nombre}')" ${disabled}>
-                                            ${btnText}
-                                        </button>
-                                    </td>
-                                </tr>
-                            `;
-                        });
-
-                        html += `
-                                    </tbody>
-                                </table>
-                                <br>
-                                <button onclick="document.getElementById('departamentos-card').style.display='none'">Cerrar</button>
-                            `;
-
-                        content.innerHTML = html;
-                    })
-                    .catch(error => {
-                        content.innerHTML = `❌ Error al cargar: ${error}`;
+                content.innerHTML = '⏳ Cargando...';
+                fetch('/departamentos').then(r=>r.json()).then(data => {
+                    if (data.error) { content.innerHTML = `❌ ${data.error}`; return; }
+                    let h = `<p><b>Total plazas (mapa):</b> ${data.total}</p>
+                             <p><b>Departamentos únicos:</b> ${data.departamentos_unicos}</p><br>
+                             <table><thead><tr><th>Departamento</th><th>Cantidad</th><th>Acción</th></tr></thead><tbody>`;
+                    data.departamentos.forEach(d => {
+                        const completo = d.en_json >= d.cantidad;
+                        const disabled = completo ? 'disabled' : '';
+                        const btnClass = completo ? 'btn-success' : 'btn-warning';
+                        const btnText = completo ? '✅ Completo' : `📥 Agregar ${d.cantidad}`;
+                        h += `<tr><td><b>${d.nombre}</b></td><td><b>${d.cantidad}</b> (JSON: ${d.en_json})</td>
+                              <td><button class="${btnClass}" onclick="agregarDepartamento('${d.nombre}')" ${disabled}>${btnText}</button></td></tr>`;
                     });
+                    h += `</tbody></table><br><button onclick="document.getElementById('departamentos-card').style.display='none'">Cerrar</button>`;
+                    content.innerHTML = h;
+                }).catch(e=>content.innerHTML=`❌ ${e}`);
             }
 
-            function actualizarContenidoJSON() {
-                fetch('/verjson', { cache: 'no-store' })
-                    .then(response => response.json())
-                    .then(data => {
-                        const pre = document.querySelector('pre');
-                        if (pre) {
-                            pre.textContent = JSON.stringify(data.contenido, null, 2);
-                        }
-                    })
-                    .catch(error => console.error('Error al actualizar JSON:', error));
-            }
-
-            const INTERVALO_REFRESCO_MS = 30000;
-            setInterval(actualizarContenidoJSON, INTERVALO_REFRESCO_MS);
-
-            function agregarDepartamento(departamento) {
-                const confirmar = confirm(`¿Seguro que quieres agregar todas las plazas de "${departamento}" al JSON?`);
-                if (!confirmar) return;
-
-                const resultadoDiv = document.getElementById('resultado');
-                resultadoDiv.innerHTML = `⏳ Agregando plazas de ${departamento}...`;
-
+            function agregarDepartamento(dep) {
+                if (!confirm(`¿Agregar todas las plazas de "${dep}"?`)) return;
+                const div = document.getElementById('resultado');
+                div.innerHTML = `⏳ Agregando ${dep}...`;
                 fetch('/agregar-departamento', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ departamento: departamento })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        resultadoDiv.innerHTML = `❌ ${data.error}`;
-                        alert(`❌ Error: ${data.error}`);
-                    } else {
-                        resultadoDiv.innerHTML = `✅ ${data.mensaje} (Total en JSON: ${data.total_plazas_en_json})`;
-                        alert(`✅ ${data.mensaje}\\nEncontradas: ${data.plazas_encontradas}\\nNuevas agregadas: ${data.plazas_nuevas}`);
-                        verDepartamentos();
-                        actualizarContenidoJSON();
-                    }
-                })
-                .catch(error => {
-                    resultadoDiv.innerHTML = `❌ Error al agregar: ${error}`;
-                    alert(`❌ Error: ${error}`);
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({departamento: dep})
+                }).then(r=>r.json()).then(data => {
+                    div.innerHTML = data.error ? `❌ ${data.error}` : `✅ ${data.mensaje}`;
+                    if (!data.error) { verDepartamentos(); actualizarContenidoJSON(); }
                 });
             }
 
             function limpiarJSON() {
-                if (confirm('⚠️ ¿Estás seguro de que quieres ELIMINAR TODOS los datos guardados? Esta acción no se puede deshacer.')) {
-                    const resultadoDiv = document.getElementById('resultado');
-                    resultadoDiv.innerHTML = '⏳ Eliminando datos...';
-
-                    fetch('/limpiar-json', { method: 'POST' })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.error) {
-                                resultadoDiv.innerHTML = '❌ ' + data.error;
-                                alert('❌ Error: ' + data.error);
-                            } else {
-                                resultadoDiv.innerHTML = '✅ ' + data.mensaje;
-                                alert('✅ ' + data.mensaje);
-                                location.reload();
-                            }
-                        })
-                        .catch(error => {
-                            resultadoDiv.innerHTML = '❌ Error al limpiar: ' + error;
-                            alert('❌ Error: ' + error);
-                        });
-                }
+                if (!confirm('⚠️ ¿Eliminar TODOS los datos?')) return;
+                fetch('/limpiar-json', {method:'POST'}).then(r=>r.json()).then(d=>{
+                    alert(d.mensaje || d.error);
+                    if (d.mensaje) location.reload();
+                });
             }
 
             function agregarTodosLosDepartamentos() {
-                const confirmar = confirm('⚠️ ¿Seguro que quieres agregar todas las plazas de TODOS los departamentos pendientes?');
-                if (!confirmar) return;
-
-                const btn = document.querySelector('button[onclick="agregarTodosLosDepartamentos()"]');
-                btn.disabled = true;
-                btn.textContent = '⏳ Procesando...';
-
-                const resultadoDiv = document.getElementById('resultado');
-                resultadoDiv.innerHTML = '⏳ Obteniendo lista de departamentos...';
-
-                fetch('/departamentos')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.error) {
-                            resultadoDiv.innerHTML = `❌ Error al obtener departamentos: ${data.error}`;
-                            alert('❌ Error: ' + data.error);
-                            btn.disabled = false;
-                            btn.textContent = '🚀 Agregar todos los departamentos pendientes';
-                            return;
-                        }
-
-                        const pendientes = data.departamentos.filter(d => d.en_json < d.cantidad);
-
-                        if (pendientes.length === 0) {
-                            resultadoDiv.innerHTML = '✅ Todos los departamentos ya están completos. ¡No hay nada que agregar!';
-                            alert('✅ Todos los departamentos ya están completos.');
-                            btn.disabled = false;
-                            btn.textContent = '🚀 Agregar todos los departamentos pendientes';
-                            return;
-                        }
-
-                        resultadoDiv.innerHTML = `⏳ Agregando plazas de ${pendientes.length} departamento(s) pendientes... (0/${pendientes.length})`;
-
-                        let procesados = 0;
-                        let totalAgregados = 0;
-                        let errores = [];
-
-                        function procesarSiguiente() {
-                            if (procesados >= pendientes.length) {
-                                const mensaje = `✅ Proceso completado. Se agregaron plazas de ${totalAgregados} departamento(s). ${errores.length > 0 ? 'Hubo ' + errores.length + ' error(es).' : ''}`;
-                                resultadoDiv.innerHTML = mensaje;
-                                alert(mensaje);
-                                verDepartamentos();
-                                actualizarContenidoJSON();
-                                btn.disabled = false;
-                                btn.textContent = '🚀 Agregar todos los departamentos pendientes';
-                                return;
-                            }
-
-                            const depto = pendientes[procesados];
-                            const nombre = depto.nombre;
-                            resultadoDiv.innerHTML = `⏳ Agregando plazas de ${nombre}... (${procesados + 1}/${pendientes.length})`;
-
-                            fetch('/agregar-departamento', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ departamento: nombre })
-                            })
-                            .then(response => response.json())
-                            .then(data => {
-                                if (data.error) {
-                                    errores.push(`❌ ${nombre}: ${data.error}`);
-                                } else {
-                                    totalAgregados++;
-                                }
-                                procesados++;
-                                procesarSiguiente();
-                            })
-                            .catch(error => {
-                                errores.push(`❌ ${nombre}: Error de red: ${error.message}`);
-                                procesados++;
-                                procesarSiguiente();
-                            });
-                        }
-
-                        procesarSiguiente();
-
-                    })
-                    .catch(error => {
-                        resultadoDiv.innerHTML = `❌ Error al obtener departamentos: ${error}`;
-                        alert('❌ Error: ' + error);
-                        btn.disabled = false;
-                        btn.textContent = '🚀 Agregar todos los departamentos pendientes';
-                    });
+                if (!confirm('¿Agregar todos los departamentos pendientes?')) return;
+                fetch('/departamentos').then(r=>r.json()).then(data => {
+                    if (data.error) { alert(data.error); return; }
+                    const pendientes = data.departamentos.filter(d => d.en_json < d.cantidad);
+                    if (!pendientes.length) { alert('Todos completos'); return; }
+                    let i = 0;
+                    (function next() {
+                        if (i >= pendientes.length) { alert('✅ Terminado'); verDepartamentos(); actualizarContenidoJSON(); return; }
+                        const dep = pendientes[i++].nombre;
+                        fetch('/agregar-departamento', {
+                            method:'POST', headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify({departamento: dep})
+                        }).then(r=>r.json()).then(()=>next()).catch(()=>next());
+                    })();
+                });
             }
 
             function limpiarVencidas() {
-                if (!confirm('⚠️ ¿Seguro que quieres eliminar todas las plazas cuya fecha de cierre ya pasó?')) return;
-
-                const resultadoDiv = document.getElementById('resultado');
-                resultadoDiv.innerHTML = '⏳ Eliminando plazas vencidas...';
-
-                fetch('/limpiar-vencidas', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        resultadoDiv.innerHTML = `❌ ${data.error}`;
-                        alert(`❌ Error: ${data.error}`);
-                    } else {
-                        resultadoDiv.innerHTML = `✅ ${data.mensaje} (Restantes: ${data.restantes || 0})`;
-                        alert(`✅ ${data.mensaje}`);
-                        verDepartamentos();
-                        actualizarContenidoJSON();
-                    }
-                })
-                .catch(error => {
-                    resultadoDiv.innerHTML = `❌ Error al eliminar: ${error}`;
-                    alert(`❌ Error: ${error}`);
+                if (!confirm('¿Eliminar plazas vencidas?')) return;
+                fetch('/limpiar-vencidas', {method:'POST'}).then(r=>r.json()).then(d=>{
+                    alert(d.mensaje || d.error);
+                    verDepartamentos();
+                    actualizarContenidoJSON();
                 });
             }
 
             document.getElementById('cargaForm').addEventListener('submit', function(e) {
                 e.preventDefault();
-                const textarea = this.querySelector('textarea');
-                const jsonStr = textarea.value.trim();
-                if (!jsonStr) {
-                    alert('❌ Por favor pega un JSON.');
-                    return;
-                }
-                try {
-                    JSON.parse(jsonStr);
-                } catch (err) {
-                    alert('❌ El texto no es un JSON válido. Revisa comillas, comas, etc.\\n' + err.message);
-                    return;
-                }
+                const jsonStr = this.querySelector('textarea').value.trim();
+                if (!jsonStr) return;
+                try { JSON.parse(jsonStr); } catch (err) { alert('JSON inválido: ' + err.message); return; }
                 fetch('/cargar-json', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: jsonStr
-                })
-                .then(response => response.json())
-                .then(data => {
-                    alert('✅ ' + (data.mensaje || data.error));
-                    if (data.mensaje) location.reload();
-                })
-                .catch(error => {
-                    alert('❌ Error al comunicarse con el servidor: ' + error);
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: jsonStr
+                }).then(r=>r.json()).then(d=>{
+                    alert(d.mensaje || d.error);
+                    if (d.mensaje) location.reload();
                 });
             });
         </script>
     </body>
     </html>
     """
-    html_page = html_page.replace(
-        "__CONTENIDO_JSON__",
-        json.dumps(contenido, indent=2, ensure_ascii=False),
-    )
-    return html_page
+    return html_page.replace("__CONTENIDO_JSON__", json.dumps(contenido, indent=2, ensure_ascii=False))
 
 
 @app.route("/limpiar-json", methods=["POST"])
@@ -1745,7 +1259,7 @@ def limpiar_json():
                 if github_eliminar_archivo(archivo, f"Eliminar {archivo}"):
                     mensajes.append(f"{archivo} eliminado.")
                 else:
-                    mensajes.append(f"{archivo} ya no existía.")
+                    mensajes.append(f"{archivo} no existía.")
             except Exception as e:
                 mensajes.append(f"Error con {archivo}: {e}")
         return {"mensaje": " ".join(mensajes)}, 200
@@ -1758,27 +1272,25 @@ def cargar_json():
     try:
         raw_data = request.get_data(as_text=True)
         if not raw_data:
-            return {"error": "El cuerpo de la solicitud está vacío"}, 400
+            return {"error": "Cuerpo vacío"}, 400
         data = json.loads(raw_data)
     except json.JSONDecodeError as e:
-        return {"error": f"El JSON es inválido: {str(e)}"}, 400
+        return {"error": f"JSON inválido: {str(e)}"}, 400
     except Exception as e:
-        return {"error": f"Error al leer la solicitud: {str(e)}"}, 400
+        return {"error": f"Error al leer: {str(e)}"}, 400
 
     if not isinstance(data, list):
-        return {"error": "El JSON debe ser una lista de objetos"}, 400
-
+        return {"error": "Debe ser una lista de objetos"}, 400
     if not data:
-        return {"error": "El JSON está vacío (lista vacía)"}, 400
+        return {"error": "JSON vacío"}, 400
 
     guardar_datos_actuales(data)
     try:
-        total_mapa = obtener_total_plazas_mapa()
-        guardar_total_mapa_actual(total_mapa)
+        guardar_total_mapa_actual(obtener_total_plazas_mapa())
     except Exception as e:
-        print(f"Error al obtener total del mapa: {e}")
+        print(f"Error al actualizar total_mapa: {e}")
 
-    return {"mensaje": f"✅ JSON guardado correctamente ({len(data)} plazas)"}
+    return {"mensaje": f"✅ JSON guardado ({len(data)} plazas)"}
 
 
 @app.route("/verjson")
@@ -1795,24 +1307,17 @@ def verjson():
 @app.route("/departamentos")
 def obtener_departamentos():
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(URL_PAGINA, headers=headers, timeout=30)
+        response = requests.get(URL_PAGINA, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
         response.raise_for_status()
-
-        patron = r'L\.marker\(\[.*?\],\s*\{[^}]*title:\s*[\'"]([^\'"]+)[\'"][^}]*\}\)'
-        coincidencias = re.findall(patron, response.text, re.DOTALL)
+        coincidencias = re.findall(r'L\.marker\(\[.*?\],\s*\{[^}]*title:\s*[\'"]([^\'"]+)[\'"][^}]*\}\)', response.text, re.DOTALL)
         if not coincidencias:
-            patron2 = r'title:\s*[\'"]([^\'"]+)[\'"]'
-            coincidencias = re.findall(patron2, response.text, re.DOTALL)
-
+            coincidencias = re.findall(r'title:\s*[\'"]([^\'"]+)[\'"]', response.text, re.DOTALL)
         if not coincidencias:
             return {"error": "No se encontraron departamentos"}, 404
 
         contador_mapa = Counter(coincidencias)
-
-        plazas_json = cargar_datos_anteriores()
         contador_json = defaultdict(int)
-        for p in plazas_json:
+        for p in cargar_datos_anteriores():
             depto = p.get("departamento", "").strip()
             if depto:
                 contador_json[depto] += 1
@@ -1820,21 +1325,17 @@ def obtener_departamentos():
         departamentos = []
         for nombre, cantidad_mapa in contador_mapa.items():
             nombre_depto = nombre.split(" - ")[0].strip()
-            cantidad_json = contador_json.get(nombre_depto, 0)
             departamentos.append({
                 "nombre": nombre_depto,
                 "cantidad": cantidad_mapa,
-                "en_json": cantidad_json,
+                "en_json": contador_json.get(nombre_depto, 0),
             })
-
         departamentos.sort(key=lambda x: x["cantidad"], reverse=True)
-
         return {
             "departamentos": departamentos,
             "total": len(coincidencias),
             "departamentos_unicos": len(departamentos),
         }
-
     except requests.exceptions.RequestException as e:
         return {"error": f"Error de conexión: {str(e)}"}, 500
     except Exception as e:
@@ -1846,22 +1347,20 @@ def agregar_departamento():
     try:
         data = request.get_json()
         if not data or "departamento" not in data:
-            return {"error": "Se requiere el nombre del departamento"}, 400
+            return {"error": "Se requiere 'departamento'"}, 400
 
         departamento_nombre = data["departamento"].strip()
-
         try:
             plazas_departamento = obtener_vacantes_por_departamento(departamento_nombre)
         except ValueError as e:
             return {"error": str(e)}, 400
 
         if not plazas_departamento:
-            return {"error": f"No se encontraron plazas para '{departamento_nombre}'."}, 404
+            return {"error": f"Sin plazas para '{departamento_nombre}'"}, 404
 
         try:
             conteo_mapa = obtener_conteo_marcadores_por_departamento()
-        except Exception as e:
-            print(f"⚠️ No se pudo obtener conteo del mapa: {e}")
+        except Exception:
             conteo_mapa = {}
         cantidad_esperada = conteo_mapa.get(departamento_nombre)
 
@@ -1872,18 +1371,16 @@ def agregar_departamento():
         guardar_datos_actuales(plazas_fusionadas)
 
         try:
-            total_mapa = obtener_total_plazas_mapa()
-            guardar_total_mapa_actual(total_mapa)
+            guardar_total_mapa_actual(obtener_total_plazas_mapa())
         except Exception as e:
             print(f"Error al actualizar total_mapa: {e}")
 
         return {
-            "mensaje": f"✅ Se procesaron {len(plazas_departamento)} plazas de '{departamento_nombre}'",
+            "mensaje": f"✅ {len(plazas_departamento)} plazas de '{departamento_nombre}'",
             "plazas_encontradas": len(plazas_departamento),
             "total_plazas_en_json": len(plazas_fusionadas),
             "plazas_nuevas": len(ids_nuevas),
         }
-
     except Exception as e:
         return {"error": f"Error al agregar departamento: {str(e)}"}, 500
 
@@ -1893,24 +1390,17 @@ def limpiar_vencidas():
     try:
         plazas = cargar_datos_anteriores()
         if not plazas:
-            return {"mensaje": "No hay plazas en el JSON", "eliminadas": 0}, 200
+            return {"mensaje": "No hay plazas", "eliminadas": 0}, 200
 
         vigentes, vencidas = limpiar_plazas_vencidas(plazas)
         if vencidas:
             guardar_datos_actuales(vigentes)
-            return {
-                "mensaje": f"Se eliminaron {len(vencidas)} plazas vencidas.",
-                "eliminadas": len(vencidas),
-                "restantes": len(vigentes),
-            }, 200
-        else:
-            return {"mensaje": "No hay plazas vencidas.", "eliminadas": 0}, 200
+            return {"mensaje": f"Se eliminaron {len(vencidas)} vencidas.", "eliminadas": len(vencidas), "restantes": len(vigentes)}, 200
+        return {"mensaje": "No hay vencidas.", "eliminadas": 0}, 200
     except Exception as e:
         return {"error": str(e)}, 500
 
 
-# Arranca los hilos al importar el módulo (funciona con `gunicorn vigilante:app`).
-# IMPORTANTE: usa 1 solo worker de Gunicorn, o los hilos se duplican.
 threading.Thread(target=hilo_actualizador_postulados, daemon=True).start()
 threading.Thread(target=hilo_vigilante_automatico, daemon=True).start()
 
