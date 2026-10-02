@@ -1,18 +1,5 @@
 [
   {
-    "id": "bolívar|primaria|tiquisio|tiquisio|02/10/2026_a_las_18:19|bolivar|docente_de_aula|vacantes_generales",
-    "area": "Primaria",
-    "secretaria": "Bolivar",
-    "zona": "Tiquisio",
-    "zona_tipo": "Rural",
-    "departamento": "Bolívar",
-    "municipio": "Tiquisio",
-    "tipo_priorizacion": "Vacantes Generales",
-    "cierre": "02/10/2026 a las 18:19",
-    "postulados": 48,
-    "cargo": "Docente de aula"
-  },
-  {
     "id": "córdoba|ciencias_sociales|medio_san_jorge|ayapel|02/10/2026_a_las_15:57|córdoba|docente_de_aula|vacantes_generales",
     "area": "Ciencias sociales",
     "secretaria": "Córdoba",
@@ -153,6 +140,19 @@
     "tipo_priorizacion": "Vacantes Generales",
     "cierre": "03/10/2026 a las 10:13",
     "postulados": 34,
+    "cargo": "Docente de aula"
+  },
+  {
+    "id": "bolívar|primaria|tiquisio|tiquisio|02/10/2026_a_las_18:19|bolivar|docente_de_aula|vacantes_generales",
+    "area": "Primaria",
+    "secretaria": "Bolivar",
+    "zona": "Tiquisio",
+    "zona_tipo": "Rural",
+    "departamento": "Bolívar",
+    "municipio": "Tiquisio",
+    "tipo_priorizacion": "Vacantes Generales",
+    "cierre": "02/10/2026 a las 18:19",
+    "postulados": 48,
     "cargo": "Docente de aula"
   }
 ]
