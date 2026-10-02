@@ -4,3 +4,4 @@ beautifulsoup4
 lxml
 gunicorn
 python-dotenv
+psycopg2-binary==2.9.9
