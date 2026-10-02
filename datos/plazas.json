@@ -1,18 +1,5 @@
 [
   {
-    "id": "nariño|sin_asignación_directa|norte|leiva|02/10/2026_a_las_16:53|nariño|docente_orientador|vacantes_generales",
-    "area": "Sin asignación directa",
-    "secretaria": "Nariño",
-    "zona": "Norte",
-    "zona_tipo": "Urbana",
-    "departamento": "Nariño",
-    "municipio": "Leiva",
-    "tipo_priorizacion": "Vacantes Generales",
-    "cierre": "02/10/2026 a las 16:53",
-    "postulados": 55,
-    "cargo": "Docente Orientador"
-  },
-  {
     "id": "putumayo|matemáticas|bajo_putumayo|leguizamo|03/10/2026_a_las_10:19|putumayo|docente_de_aula|vacantes_generales",
     "area": "Matemáticas",
     "secretaria": "Putumayo",
@@ -154,5 +141,18 @@
     "cierre": "02/10/2026 a las 15:57",
     "postulados": 85,
     "cargo": "Docente de aula"
+  },
+  {
+    "id": "nariño|sin_asignación_directa|norte|leiva|02/10/2026_a_las_16:53|nariño|docente_orientador|vacantes_generales",
+    "area": "Sin asignación directa",
+    "secretaria": "Nariño",
+    "zona": "Norte",
+    "zona_tipo": "Urbana",
+    "departamento": "Nariño",
+    "municipio": "Leiva",
+    "tipo_priorizacion": "Vacantes Generales",
+    "cierre": "02/10/2026 a las 16:53",
+    "postulados": 56,
+    "cargo": "Docente Orientador"
   }
 ]
