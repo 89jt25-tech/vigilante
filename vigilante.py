@@ -4,6 +4,8 @@ import os
 import re
 import json
 import html
+import base64
+import hashlib
 import threading
 import time
 from datetime import datetime, timedelta
@@ -26,19 +28,29 @@ TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
 URL_PAGINA = "https://sistemamaestro.mineducacion.gov.co/SistemaMaestro/busquedaVacantes.xhtml"
 ZONA_COLOMBIA = ZoneInfo("America/Bogota")
 
-# Carpeta de datos. En Render, apunta DATA_DIR a un disco persistente (ej. /var/data)
-# o el estado se perderá en cada reinicio/redeploy.
+# Carpeta de datos local (en Render es temporal; la persistencia real va a GitHub).
 DATA_DIR = os.environ.get("DATA_DIR", ".")
 os.makedirs(DATA_DIR, exist_ok=True)
 ARCHIVO_DATOS = os.path.join(DATA_DIR, "plazas.json")
 ARCHIVO_CONTEOS = os.path.join(DATA_DIR, "conteo_deptos.json")
 ARCHIVO_RESUMENES = os.path.join(DATA_DIR, "ultimo_resumen.json")
 
+# Persistencia en GitHub (variables de entorno en Render)
+GH_TOKEN = os.environ.get("GITHUB_TOKEN")
+GH_REPO = os.environ.get("GITHUB_REPO")            # ej: 89jt25-tech/vigilante
+GH_BRANCH = os.environ.get("GITHUB_BRANCH", "datos")
+
 # Ciclo rápido: 1 GET al mapa + scraping solo de departamentos cuyo conteo cambió.
 INTERVALO_RAPIDO = int(os.environ.get("INTERVALO_VIGILANTE_SEGUNDOS", 30))
 # Barrido completo (refresca postulados y atrapa cambios que el conteo no ve).
 INTERVALO_BARRIDO = int(os.environ.get(
     "INTERVALO_BARRIDO_SEGUNDOS", os.environ.get("INTERVALO_ACTUALIZACION_POSTULADOS", 600)))
+
+# Avisos de salida de plazas
+AVISAR_CIERRES = os.environ.get("AVISAR_CIERRES", "1") != "0"
+AVISAR_RETIRADAS = os.environ.get("AVISAR_RETIRADAS", "1") != "0"
+# Si una plaza cerró hace más de estas horas (ej. el servicio estuvo apagado), se purga sin avisar.
+VENTANA_CIERRE_HORAS = float(os.environ.get("VENTANA_CIERRE_HORAS", 12))
 
 MAX_PAGINAS = 60
 FILAS_POR_PAGINA = 6
@@ -103,10 +115,11 @@ def _norm(s):
 
 
 # Locks
-lock_json = threading.RLock()          # protege lectura/escritura de plazas.json
+lock_json = threading.RLock()          # protege lectura/escritura de los JSON
 lock_notificar = threading.Lock()      # evita avisos duplicados
-lock_rapido = threading.Lock()         # un solo ciclo rápido a la vez
+lock_rapido = threading.Lock()         # un solo ciclo rápido a la vez (hilo/endpoint)
 lock_barrido = threading.Lock()        # un solo barrido completo a la vez
+lock_ciclo = threading.Lock()          # el ciclo en sí nunca corre dos veces en paralelo
 lock_estado = threading.Lock()
 estado = {
     "rapido": {"ultima": None, "resultado": None, "ejecuciones": 0},
@@ -126,7 +139,99 @@ def _marcar_estado(clave, resultado):
 
 
 # ============================================================
-# PERSISTENCIA (escritura atómica)
+# PERSISTENCIA EN GITHUB
+# ============================================================
+_gh_sha = {}     # sha actual de cada archivo en GitHub
+_gh_hash = {}    # hash del último contenido sincronizado
+_gh_info = {"ultimo_ok": None, "ultimo_error": None}
+
+
+def _gh_activo():
+    return bool(GH_TOKEN and GH_REPO)
+
+
+def _gh_url(nombre):
+    return f"https://api.github.com/repos/{GH_REPO}/contents/{nombre}"
+
+
+def _gh_headers():
+    return {"Authorization": f"Bearer {GH_TOKEN}", "Accept": "application/vnd.github+json"}
+
+
+def _gh_ok():
+    _gh_info["ultimo_ok"] = _ahora().isoformat()
+
+
+def _gh_error(msg):
+    _gh_info["ultimo_error"] = f"{_ahora().isoformat()} - {msg}"[:300]
+    print(f"⚠️ GitHub: {msg}")
+
+
+def gh_restaurar(ruta_local):
+    """Si el archivo local no existe, lo baja de GitHub."""
+    if not _gh_activo() or os.path.exists(ruta_local):
+        return
+    nombre = os.path.basename(ruta_local)
+    try:
+        r = requests.get(_gh_url(nombre), headers=_gh_headers(),
+                         params={"ref": GH_BRANCH}, timeout=20)
+        if r.status_code == 404:
+            print(f"☁️ {nombre} aún no existe en GitHub (se creará al guardar).")
+            return
+        r.raise_for_status()
+        j = r.json()
+        if not j.get("content"):
+            _gh_error(f"{nombre} no devolvió contenido (¿pesa más de 1 MB?)")
+            return
+        contenido = base64.b64decode(j["content"]).decode("utf-8")
+        with open(ruta_local, "w", encoding="utf-8") as f:
+            f.write(contenido)
+        _gh_sha[nombre] = j["sha"]
+        _gh_hash[nombre] = hashlib.md5(contenido.encode("utf-8")).hexdigest()
+        _gh_ok()
+        print(f"☁️ Restaurado {nombre} desde GitHub")
+    except Exception as e:
+        _gh_error(f"no se pudo restaurar {nombre}: {e}")
+
+
+def gh_subir(ruta_local):
+    """Sube el archivo a GitHub solo si su contenido cambió."""
+    if not _gh_activo():
+        return
+    nombre = os.path.basename(ruta_local)
+    try:
+        with open(ruta_local, "r", encoding="utf-8") as f:
+            contenido = f.read()
+        h = hashlib.md5(contenido.encode("utf-8")).hexdigest()
+        if _gh_hash.get(nombre) == h:
+            return
+        body = {
+            "message": f"update {nombre}",
+            "branch": GH_BRANCH,
+            "content": base64.b64encode(contenido.encode("utf-8")).decode("ascii"),
+        }
+        if nombre in _gh_sha:
+            body["sha"] = _gh_sha[nombre]
+        r = requests.put(_gh_url(nombre), headers=_gh_headers(), json=body, timeout=20)
+        if r.status_code in (409, 422):
+            # sha desactualizado o faltante: lo consultamos y reintentamos una vez
+            g = requests.get(_gh_url(nombre), headers=_gh_headers(),
+                             params={"ref": GH_BRANCH}, timeout=20)
+            if g.status_code == 200:
+                body["sha"] = g.json()["sha"]
+            r = requests.put(_gh_url(nombre), headers=_gh_headers(), json=body, timeout=20)
+        if r.status_code >= 400:
+            _gh_error(f"{nombre}: HTTP {r.status_code} - {r.text[:150]}")
+            return
+        _gh_sha[nombre] = r.json()["content"]["sha"]
+        _gh_hash[nombre] = h
+        _gh_ok()
+    except Exception as e:
+        _gh_error(f"no se pudo subir {nombre}: {e}")
+
+
+# ============================================================
+# PERSISTENCIA (escritura atómica + espejo en GitHub)
 # ============================================================
 
 def _escritura_atomica_json(ruta, data):
@@ -139,6 +244,7 @@ def _escritura_atomica_json(ruta, data):
         except OSError:
             pass
     os.replace(tmp, ruta)
+    gh_subir(ruta)
 
 
 def _leer_json(ruta, defecto):
@@ -412,12 +518,13 @@ def limpiar_plazas_vencidas(plazas):
 
 
 def purgar_vencidas():
+    """Elimina las vencidas del JSON y las DEVUELVE (lista) para poder avisarlas."""
     with lock_json:
         plazas = cargar_datos_anteriores()
         vigentes, vencidas = limpiar_plazas_vencidas(plazas)
         if vencidas:
             guardar_datos_actuales(vigentes)
-    return len(vencidas)
+    return vencidas
 
 
 def contar_plazas_por_activacion(plazas):
@@ -469,6 +576,7 @@ def fusionar_plazas(plazas_bd, scrapeadas, departamento, cantidad_esperada=None)
     """
     Scrape completo -> reconcilia (elimina las que ya no están en ese depto).
     Scrape incompleto -> solo agrega/actualiza (nunca borra).
+    Devuelve (lista_final, ids_nuevas, plazas_eliminadas).
     """
     completo = bool(scrapeadas) and (cantidad_esperada is None or len(scrapeadas) >= cantidad_esperada)
     if not completo:
@@ -476,9 +584,12 @@ def fusionar_plazas(plazas_bd, scrapeadas, departamento, cantidad_esperada=None)
     dep = _norm(departamento)
     ids_scrap = {p["id"] for p in scrapeadas}
     por_id = {p["id"]: p for p in plazas_bd}
+    eliminadas = []
     if completo:
-        por_id = {i: p for i, p in por_id.items()
-                  if _norm(p.get("departamento")) != dep or i in ids_scrap}
+        for i, p in list(por_id.items()):
+            if _norm(p.get("departamento")) == dep and i not in ids_scrap:
+                eliminadas.append(p)
+                del por_id[i]
     nuevas = set()
     for p in scrapeadas:
         if p["id"] in por_id:
@@ -486,21 +597,24 @@ def fusionar_plazas(plazas_bd, scrapeadas, departamento, cantidad_esperada=None)
         else:
             por_id[p["id"]] = dict(p)
             nuevas.add(p["id"])
-    return list(por_id.values()), nuevas
+    return list(por_id.values()), nuevas, eliminadas
 
 
 def registrar_plazas(scrapeadas, departamento, cantidad_esperada=None, silencioso=False):
-    """Fusiona y marca las nuevas con first_seen y notificada=False (o True si silencioso)."""
+    """
+    Fusiona y marca las nuevas con first_seen y notificada=False (o True si silencioso).
+    Devuelve (ids_nuevas, plazas_eliminadas).
+    """
     ahora = _ahora().isoformat()
     with lock_json:
         bd = cargar_datos_anteriores()
-        fusionadas, nuevas = fusionar_plazas(bd, scrapeadas, departamento, cantidad_esperada)
+        fusionadas, nuevas, eliminadas = fusionar_plazas(bd, scrapeadas, departamento, cantidad_esperada)
         for p in fusionadas:
             if p["id"] in nuevas:
                 p["first_seen"] = ahora
                 p["notificada"] = bool(silencioso)
         guardar_datos_actuales(fusionadas)
-    return nuevas
+    return nuevas, eliminadas
 
 
 # ============================================================
@@ -569,6 +683,44 @@ def construir_alerta_nuevas(plazas):
     return "\n".join(lineas)
 
 
+def construir_alerta_salidas(plazas, icono, titulo, etiqueta_fecha):
+    lineas = [f"{icono} <b>{len(plazas)} plaza(s) {titulo}</b>", ""]
+    for p in sorted(plazas, key=lambda x: (x["departamento"], x["area"])):
+        lineas.append(
+            f"📌 <b>{html.escape(p['departamento'])}</b> · {html.escape(abreviar_area(p['area']))} "
+            f"({html.escape(p['municipio'])} - {html.escape(p['zona_tipo'])})"
+        )
+        lineas.append(f"   ⏰ {etiqueta_fecha}: {html.escape(p['cierre'])} · {p['postulados']} postulados")
+    return "\n".join(lineas)
+
+
+def avisar_salidas(salientes):
+    """
+    Avisa plazas que salieron de la base:
+      - cerradas: su fecha de cierre ya pasó (solo si cerraron dentro de la ventana)
+      - retiradas: desaparecieron del sitio antes de su hora de cierre
+    Las que nunca se notificaron como nuevas se ignoran.
+    """
+    if not salientes:
+        return
+    ahora = _ahora()
+    cerradas, retiradas = [], []
+    for p in salientes:
+        if p.get("notificada") is False:
+            continue
+        fc = parsear_fecha_cierre(p.get("cierre"))
+        if fc and fc <= ahora:
+            if ahora - fc <= timedelta(hours=VENTANA_CIERRE_HORAS):
+                cerradas.append(p)
+        else:
+            retiradas.append(p)
+    if cerradas and AVISAR_CIERRES:
+        enviar_telegram(construir_alerta_salidas(cerradas, "🔒", "cerrada(s)", "Cerró"))
+    if retiradas and AVISAR_RETIRADAS:
+        enviar_telegram(construir_alerta_salidas(
+            retiradas, "🚫", "retirada(s) del sitio antes del cierre", "Cierre previsto"))
+
+
 def notificar_nuevas_pendientes():
     """Envía las plazas con notificada=False y las marca SOLO si Telegram confirmó."""
     with lock_notificar:
@@ -624,12 +776,12 @@ def construir_resumen(plazas, encabezado=None, chat_id=None):
 # CICLO PRINCIPAL
 # ============================================================
 
-def ciclo_rapido(forzar_todos=False):
-    """
-    1 GET al mapa; scrapea solo los departamentos cuyo conteo cambió
-    (o todos si forzar_todos / si la base está vacía). Notifica nuevas al instante.
-    """
-    purgar_vencidas()
+def _ciclo_interno(forzar_todos=False):
+    # 1) Purga de vencidas + aviso de cierre
+    vencidas = purgar_vencidas()
+    if vencidas:
+        avisar_salidas(vencidas)
+
     conteo_mapa = obtener_conteo_marcadores_por_departamento()
     if not conteo_mapa:
         raise RuntimeError("El mapa no devolvió marcadores (¿cambió el HTML del sitio?)")
@@ -649,10 +801,11 @@ def ciclo_rapido(forzar_todos=False):
         try:
             esperado = conteo_mapa[depto]
             plazas = obtener_vacantes_por_departamento(depto)
-            registrar_plazas(plazas, depto, esperado, silencioso=sembrando)
+            _, eliminadas = registrar_plazas(plazas, depto, esperado, silencioso=sembrando)
             if len(plazas) >= esperado:
                 nuevo[depto] = esperado   # si quedó incompleto, se reintenta en el próximo ciclo
             if not sembrando:
+                avisar_salidas(eliminadas)
                 total_enviadas += notificar_nuevas_pendientes()  # aviso inmediato por depto
         except Exception as e:
             print(f"⚠️ Error scraping {depto}: {e}")
@@ -661,6 +814,16 @@ def ciclo_rapido(forzar_todos=False):
     if not sembrando:
         total_enviadas += notificar_nuevas_pendientes()  # reintenta pendientes de ciclos previos
     return f"{len(objetivo)} depto(s) revisados, {total_enviadas} plaza(s) nueva(s) notificada(s)"
+
+
+def ciclo_rapido(forzar_todos=False):
+    """
+    1 GET al mapa; scrapea solo los departamentos cuyo conteo cambió
+    (o todos si forzar_todos / si la base está vacía). Notifica nuevas al instante.
+    Un solo ciclo a la vez: evita que el barrido vea una base a medio sembrar.
+    """
+    with lock_ciclo:
+        return _ciclo_interno(forzar_todos)
 
 
 def hilo_rapido():
@@ -864,6 +1027,13 @@ def status():
             "intervalo_barrido_s": INTERVALO_BARRIDO,
             "total_plazas": len(plazas),
             "pendientes_de_notificar": sum(1 for p in plazas if p.get("notificada") is False),
+            "github": {
+                "activo": _gh_activo(),
+                "repo": GH_REPO,
+                "rama": GH_BRANCH,
+                "ultimo_ok": _gh_info["ultimo_ok"],
+                "ultimo_error": _gh_info["ultimo_error"],
+            },
             "rapido": estado["rapido"],
             "barrido": estado["barrido"],
         }
@@ -916,7 +1086,7 @@ def agregar_departamento():
             esperado = obtener_conteo_marcadores_por_departamento().get(nombre)
         except Exception:
             esperado = None
-        nuevas = registrar_plazas(plazas, nombre, esperado, silencioso=True)
+        nuevas, _ = registrar_plazas(plazas, nombre, esperado, silencioso=True)
         return {"mensaje": f"Se procesaron {len(plazas)} plazas de '{nombre}'",
                 "plazas_encontradas": len(plazas), "plazas_nuevas": len(nuevas),
                 "total_plazas_en_json": len(cargar_datos_anteriores())}
@@ -927,7 +1097,7 @@ def agregar_departamento():
 @app.route("/limpiar-vencidas", methods=["POST"])
 def limpiar_vencidas():
     try:
-        n = purgar_vencidas()
+        n = len(purgar_vencidas())
         return {"mensaje": f"Se eliminaron {n} plazas vencidas.", "eliminadas": n,
                 "restantes": len(cargar_datos_anteriores())}
     except Exception as e:
@@ -936,12 +1106,15 @@ def limpiar_vencidas():
 
 @app.route("/limpiar-json", methods=["POST"])
 def limpiar_json():
-    """Reinicia la base. El próximo ciclo siembra en silencio (sin spam)."""
+    """Reinicia la base (también en GitHub). El próximo ciclo siembra en silencio."""
     try:
         with lock_json:
             for ruta in (ARCHIVO_DATOS, ARCHIVO_CONTEOS):
                 if os.path.exists(ruta):
                     os.remove(ruta)
+            # Deja vacíos también en GitHub para que no se restauren los viejos.
+            _escritura_atomica_json(ARCHIVO_DATOS, [])
+            _escritura_atomica_json(ARCHIVO_CONTEOS, {})
         return {"mensaje": "Base reiniciada. El próximo ciclo la volverá a sembrar sin notificar."}
     except Exception as e:
         return {"error": f"Error al limpiar JSON: {e}"}, 500
@@ -996,8 +1169,14 @@ def home():
 # ============================================================
 # ARRANQUE
 # ============================================================
-# Usa: gunicorn app:app --workers 1 --threads 4 --timeout 120
+# Usa: gunicorn vigilante:app --workers 1 --threads 4 --timeout 120
+# (ajusta "vigilante" al nombre real del archivo; en tu repo es vigilante.py)
 # Con más de 1 worker los hilos arrancarían una vez por worker y duplicarían trabajo.
+
+# Restaura los JSON desde GitHub ANTES de arrancar los hilos.
+for _ruta in (ARCHIVO_DATOS, ARCHIVO_CONTEOS, ARCHIVO_RESUMENES):
+    gh_restaurar(_ruta)
+
 threading.Thread(target=hilo_rapido, daemon=True).start()
 threading.Thread(target=hilo_barrido, daemon=True).start()
 
