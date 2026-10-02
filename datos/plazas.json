@@ -1,18 +1,5 @@
 [
   {
-    "id": "córdoba|ciencias_sociales|medio_san_jorge|ayapel|02/10/2026_a_las_15:57|córdoba|docente_de_aula|vacantes_generales",
-    "area": "Ciencias sociales",
-    "secretaria": "Córdoba",
-    "zona": "Medio San Jorge",
-    "zona_tipo": "Urbana",
-    "departamento": "Córdoba",
-    "municipio": "Ayapel",
-    "tipo_priorizacion": "Vacantes Generales",
-    "cierre": "02/10/2026 a las 15:57",
-    "postulados": 90,
-    "cargo": "Docente de aula"
-  },
-  {
     "id": "nariño|sin_asignación_directa|norte|leiva|02/10/2026_a_las_16:53|nariño|docente_orientador|vacantes_generales",
     "area": "Sin asignación directa",
     "secretaria": "Nariño",
@@ -153,6 +140,19 @@
     "tipo_priorizacion": "Vacantes Generales",
     "cierre": "02/10/2026 a las 18:19",
     "postulados": 48,
+    "cargo": "Docente de aula"
+  },
+  {
+    "id": "córdoba|ciencias_sociales|medio_san_jorge|ayapel|02/10/2026_a_las_15:57|córdoba|docente_de_aula|vacantes_generales",
+    "area": "Ciencias sociales",
+    "secretaria": "Córdoba",
+    "zona": "Medio San Jorge",
+    "zona_tipo": "Urbana",
+    "departamento": "Córdoba",
+    "municipio": "Ayapel",
+    "tipo_priorizacion": "Vacantes Generales",
+    "cierre": "02/10/2026 a las 15:57",
+    "postulados": 91,
     "cargo": "Docente de aula"
   }
 ]
