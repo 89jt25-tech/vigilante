@@ -1,44 +1,5 @@
 [
   {
-    "id": "quindío|educación_artística_–_música|valle|la_tebaida|03/10/2026_a_las_10:13|quindío|docente_de_aula|vacantes_generales",
-    "area": "Educación artística – música",
-    "secretaria": "Quindío",
-    "zona": "Valle",
-    "zona_tipo": "Urbana",
-    "departamento": "Quindío",
-    "municipio": "La Tebaida",
-    "tipo_priorizacion": "Vacantes Generales",
-    "cierre": "03/10/2026 a las 10:13",
-    "postulados": 16,
-    "cargo": "Docente de aula"
-  },
-  {
-    "id": "quindío|educación_física,_recreación_y_deporte|valle|quimbaya|03/10/2026_a_las_10:13|quindío|docente_de_aula|vacantes_generales",
-    "area": "Educación física, recreación y deporte",
-    "secretaria": "Quindío",
-    "zona": "Valle",
-    "zona_tipo": "Urbana",
-    "departamento": "Quindío",
-    "municipio": "Quimbaya",
-    "tipo_priorizacion": "Vacantes Generales",
-    "cierre": "03/10/2026 a las 10:13",
-    "postulados": 73,
-    "cargo": "Docente de aula"
-  },
-  {
-    "id": "quindío|matemáticas|fria|salento|03/10/2026_a_las_10:13|quindío|docente_de_aula|vacantes_generales",
-    "area": "Matemáticas",
-    "secretaria": "Quindío",
-    "zona": "Fria",
-    "zona_tipo": "Rural",
-    "departamento": "Quindío",
-    "municipio": "Salento",
-    "tipo_priorizacion": "Vacantes Generales",
-    "cierre": "03/10/2026 a las 10:13",
-    "postulados": 37,
-    "cargo": "Docente de aula"
-  },
-  {
     "id": "bolívar|primaria|tiquisio|tiquisio|02/10/2026_a_las_18:19|bolivar|docente_de_aula|vacantes_generales",
     "area": "Primaria",
     "secretaria": "Bolivar",
@@ -153,6 +114,45 @@
     "tipo_priorizacion": "Vacantes Generales",
     "cierre": "03/10/2026 a las 10:20",
     "postulados": 23,
+    "cargo": "Docente de aula"
+  },
+  {
+    "id": "quindío|educación_artística_–_música|valle|la_tebaida|03/10/2026_a_las_10:13|quindío|docente_de_aula|vacantes_generales",
+    "area": "Educación artística – música",
+    "secretaria": "Quindío",
+    "zona": "Valle",
+    "zona_tipo": "Urbana",
+    "departamento": "Quindío",
+    "municipio": "La Tebaida",
+    "tipo_priorizacion": "Vacantes Generales",
+    "cierre": "03/10/2026 a las 10:13",
+    "postulados": 17,
+    "cargo": "Docente de aula"
+  },
+  {
+    "id": "quindío|educación_física,_recreación_y_deporte|valle|quimbaya|03/10/2026_a_las_10:13|quindío|docente_de_aula|vacantes_generales",
+    "area": "Educación física, recreación y deporte",
+    "secretaria": "Quindío",
+    "zona": "Valle",
+    "zona_tipo": "Urbana",
+    "departamento": "Quindío",
+    "municipio": "Quimbaya",
+    "tipo_priorizacion": "Vacantes Generales",
+    "cierre": "03/10/2026 a las 10:13",
+    "postulados": 73,
+    "cargo": "Docente de aula"
+  },
+  {
+    "id": "quindío|matemáticas|fria|salento|03/10/2026_a_las_10:13|quindío|docente_de_aula|vacantes_generales",
+    "area": "Matemáticas",
+    "secretaria": "Quindío",
+    "zona": "Fria",
+    "zona_tipo": "Rural",
+    "departamento": "Quindío",
+    "municipio": "Salento",
+    "tipo_priorizacion": "Vacantes Generales",
+    "cierre": "03/10/2026 a las 10:13",
+    "postulados": 38,
     "cargo": "Docente de aula"
   }
 ]
