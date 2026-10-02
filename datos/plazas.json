@@ -39,6 +39,45 @@
     "cargo": "Docente de aula"
   },
   {
+    "id": "bolívar|primaria|tiquisio|tiquisio|02/10/2026_a_las_18:19|bolivar|docente_de_aula|vacantes_generales",
+    "area": "Primaria",
+    "secretaria": "Bolivar",
+    "zona": "Tiquisio",
+    "zona_tipo": "Rural",
+    "departamento": "Bolívar",
+    "municipio": "Tiquisio",
+    "tipo_priorizacion": "Vacantes Generales",
+    "cierre": "02/10/2026 a las 18:19",
+    "postulados": 51,
+    "cargo": "Docente de aula"
+  },
+  {
+    "id": "córdoba|ciencias_sociales|medio_san_jorge|ayapel|02/10/2026_a_las_15:57|córdoba|docente_de_aula|vacantes_generales",
+    "area": "Ciencias sociales",
+    "secretaria": "Córdoba",
+    "zona": "Medio San Jorge",
+    "zona_tipo": "Urbana",
+    "departamento": "Córdoba",
+    "municipio": "Ayapel",
+    "tipo_priorizacion": "Vacantes Generales",
+    "cierre": "02/10/2026 a las 15:57",
+    "postulados": 96,
+    "cargo": "Docente de aula"
+  },
+  {
+    "id": "nariño|sin_asignación_directa|norte|leiva|02/10/2026_a_las_16:53|nariño|docente_orientador|vacantes_generales",
+    "area": "Sin asignación directa",
+    "secretaria": "Nariño",
+    "zona": "Norte",
+    "zona_tipo": "Urbana",
+    "departamento": "Nariño",
+    "municipio": "Leiva",
+    "tipo_priorizacion": "Vacantes Generales",
+    "cierre": "02/10/2026 a las 16:53",
+    "postulados": 61,
+    "cargo": "Docente Orientador"
+  },
+  {
     "id": "putumayo|matemáticas|bajo_putumayo|leguizamo|03/10/2026_a_las_10:19|putumayo|docente_de_aula|vacantes_generales",
     "area": "Matemáticas",
     "secretaria": "Putumayo",
@@ -87,7 +126,7 @@
     "municipio": "Puerto Guzman",
     "tipo_priorizacion": "Vacantes Priorizadas para jóvenes entre 18 y 28 años",
     "cierre": "03/10/2026 a las 10:20",
-    "postulados": 68,
+    "postulados": 69,
     "cargo": "Docente de aula"
   },
   {
@@ -115,44 +154,5 @@
     "cierre": "03/10/2026 a las 10:20",
     "postulados": 23,
     "cargo": "Docente de aula"
-  },
-  {
-    "id": "bolívar|primaria|tiquisio|tiquisio|02/10/2026_a_las_18:19|bolivar|docente_de_aula|vacantes_generales",
-    "area": "Primaria",
-    "secretaria": "Bolivar",
-    "zona": "Tiquisio",
-    "zona_tipo": "Rural",
-    "departamento": "Bolívar",
-    "municipio": "Tiquisio",
-    "tipo_priorizacion": "Vacantes Generales",
-    "cierre": "02/10/2026 a las 18:19",
-    "postulados": 51,
-    "cargo": "Docente de aula"
-  },
-  {
-    "id": "córdoba|ciencias_sociales|medio_san_jorge|ayapel|02/10/2026_a_las_15:57|córdoba|docente_de_aula|vacantes_generales",
-    "area": "Ciencias sociales",
-    "secretaria": "Córdoba",
-    "zona": "Medio San Jorge",
-    "zona_tipo": "Urbana",
-    "departamento": "Córdoba",
-    "municipio": "Ayapel",
-    "tipo_priorizacion": "Vacantes Generales",
-    "cierre": "02/10/2026 a las 15:57",
-    "postulados": 96,
-    "cargo": "Docente de aula"
-  },
-  {
-    "id": "nariño|sin_asignación_directa|norte|leiva|02/10/2026_a_las_16:53|nariño|docente_orientador|vacantes_generales",
-    "area": "Sin asignación directa",
-    "secretaria": "Nariño",
-    "zona": "Norte",
-    "zona_tipo": "Urbana",
-    "departamento": "Nariño",
-    "municipio": "Leiva",
-    "tipo_priorizacion": "Vacantes Generales",
-    "cierre": "02/10/2026 a las 16:53",
-    "postulados": 61,
-    "cargo": "Docente Orientador"
   }
 ]
