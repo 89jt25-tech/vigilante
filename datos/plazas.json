@@ -13,19 +13,6 @@
     "cargo": "Docente Orientador"
   },
   {
-    "id": "bolívar|primaria|tiquisio|tiquisio|02/10/2026_a_las_18:19|bolivar|docente_de_aula|vacantes_generales",
-    "area": "Primaria",
-    "secretaria": "Bolivar",
-    "zona": "Tiquisio",
-    "zona_tipo": "Rural",
-    "departamento": "Bolívar",
-    "municipio": "Tiquisio",
-    "tipo_priorizacion": "Vacantes Generales",
-    "cierre": "02/10/2026 a las 18:19",
-    "postulados": 44,
-    "cargo": "Docente de aula"
-  },
-  {
     "id": "putumayo|matemáticas|bajo_putumayo|leguizamo|03/10/2026_a_las_10:19|putumayo|docente_de_aula|vacantes_generales",
     "area": "Matemáticas",
     "secretaria": "Putumayo",
@@ -153,6 +140,19 @@
     "tipo_priorizacion": "Vacantes Generales",
     "cierre": "02/10/2026 a las 15:57",
     "postulados": 81,
+    "cargo": "Docente de aula"
+  },
+  {
+    "id": "bolívar|primaria|tiquisio|tiquisio|02/10/2026_a_las_18:19|bolivar|docente_de_aula|vacantes_generales",
+    "area": "Primaria",
+    "secretaria": "Bolivar",
+    "zona": "Tiquisio",
+    "zona_tipo": "Rural",
+    "departamento": "Bolívar",
+    "municipio": "Tiquisio",
+    "tipo_priorizacion": "Vacantes Generales",
+    "cierre": "02/10/2026 a las 18:19",
+    "postulados": 44,
     "cargo": "Docente de aula"
   }
 ]
